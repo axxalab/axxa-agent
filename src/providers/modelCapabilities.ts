@@ -121,6 +121,8 @@ const ENTRIES_BY_PROVIDER: Record<string, CapsEntry[]> = {
   // ─────────────────────────── OpenRouter ───────────────────────────
   // Modelos prefixados por upstream — reusa as caps do lab origem.
   openrouter: [
+    // OpenRouter Auto-Router suporta multimodal (visão/imagem, áudio, PDF) e tools nativamente
+    { prefix: "openrouter/auto", caps: { vision: true, tools: true, streaming: true } },
     // Anthropic via OpenRouter
     { prefix: "anthropic/claude-3", caps: { vision: true, tools: true, streaming: true } },
     { prefix: "anthropic/claude-4", caps: { vision: true, tools: true, streaming: true } },

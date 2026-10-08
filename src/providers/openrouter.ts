@@ -415,6 +415,7 @@ export function cotaGratisDaChave(json: unknown): { limit: number; remaining?: n
 }
 
 export function isRelevantOpenRouterModel(id: string): boolean {
+  if (id === "openrouter/auto") return true;
   if (id.startsWith("openrouter/")) return false; // auto-router etc
   if (isEmbeddingModelId(id)) return false;
   return true;

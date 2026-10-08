@@ -3,7 +3,7 @@ import {
   getFreeDailyTokens,
   getModelCapabilities,
 } from "../src/providers/modelCapabilities";
-import { buildModelCatalog } from "../src/ui/modelCatalog";
+import { buildModelCatalog, porFabricante } from "../src/ui/modelCatalog";
 
 describe("getFreeDailyTokens", () => {
   it("as duas cotas do programa de tráfego compartilhado", () => {
@@ -111,5 +111,16 @@ describe("buildModelCatalog", () => {
     expect(familias).toContain("llama");
     expect(familias).toContain("qwen");
     expect(familias).toContain("deepseek");
+  });
+
+  it("openrouter/auto é classificado como chat com família router", () => {
+    const roles = buildModelCatalog("openrouter", ["openrouter/auto"]);
+    expect(roles).toHaveLength(1);
+    expect(roles[0].id).toBe("chat");
+    expect(roles[0].families[0].id).toBe("router");
+    expect(roles[0].families[0].label).toBe("Auto Router");
+
+    const porFab = porFabricante(roles);
+    expect(porFab[0].fabricante.nome).toBe("OpenRouter");
   });
 });

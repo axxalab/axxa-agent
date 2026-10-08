@@ -28,4 +28,8 @@ describe("nomes de modelo", () => {
     expect(prettyModelName("nomic-embed-text:latest")).toBe("Nomic Embed Text");
     expect(prettyModelName("meta-llama/llama-3.2-3b-instruct:free")).toBe("Llama 3.2 3B Instruct");
   });
+
+  it("openrouter/auto vira Auto Router", () => {
+    expect(prettyModelName("openrouter/auto")).toBe("Auto Router");
+  });
 });

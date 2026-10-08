@@ -163,10 +163,11 @@ describe("capabilities — overlay do catálogo vivo (enriched)", () => {
 });
 
 describe("listModels filters", () => {
-  it("OpenRouter: mantém :free e modelos com 'auto' no nome; corta o roteador", () => {
+  it("OpenRouter: mantém :free, 'auto' no nome e openrouter/auto; corta outros pseudo-modelos", () => {
     expect(isRelevantOpenRouterModel("meta-llama/llama-3.3-70b:free")).toBe(true);
     expect(isRelevantOpenRouterModel("vendor/automatic-writer")).toBe(true);
-    expect(isRelevantOpenRouterModel("openrouter/auto")).toBe(false);
+    expect(isRelevantOpenRouterModel("openrouter/auto")).toBe(true);
+    expect(isRelevantOpenRouterModel("openrouter/other-router")).toBe(false);
     expect(isRelevantOpenRouterModel("openai/text-embedding-3-small")).toBe(false);
   });
 

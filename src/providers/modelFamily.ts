@@ -16,6 +16,8 @@ export interface ModelFamily {
 }
 
 const FAMILIES: [RegExp, ModelFamily][] = [
+  // ── OpenRouter
+  [/openrouter\/auto/, { id: "router", label: "Auto Router", color: "#6366f1", icon: "sparkles" }],
   // ── Anthropic
   [/claude-opus/, { id: "opus", label: "Opus", color: "#d97757", icon: "crown" }],
   [/claude-sonnet/, { id: "sonnet", label: "Sonnet", color: "#c98a4a", icon: "feather" }],

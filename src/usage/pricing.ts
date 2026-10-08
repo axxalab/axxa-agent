@@ -105,6 +105,8 @@ const PRICES_BY_PROVIDER: Record<string, PricingEntry[]> = {
   // OpenRouter cobra o mesmo preço do upstream + pequena margem.
   // :free suffix = 0. Outros usam o pricing do provider de origem (aprox).
   openrouter: [
+    // Auto Router (OpenRouter cobra o preço do modelo roteado a montante)
+    { prefix: "openrouter/auto", pricing: { inputPerMillion: 1.00, outputPerMillion: 3.00, tier: "paid", asOf: "2026-06" } },
     // Anthropic via OR
     { prefix: "anthropic/claude-opus-4", pricing: { inputPerMillion: 15.00, outputPerMillion: 75.00, tier: "paid", asOf: "2026-06" } },
     { prefix: "anthropic/claude-sonnet-4", pricing: { inputPerMillion: 3.00, outputPerMillion: 15.00, tier: "paid", asOf: "2026-06" } },

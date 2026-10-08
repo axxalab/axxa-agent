@@ -28,6 +28,7 @@ const APELIDOS: Record<string, string> = {
 
 /** O nome de cada casa como ela se escreve. */
 const NOMES: Record<string, string> = {
+  openrouter: "OpenRouter",
   openai: "OpenAI",
   anthropic: "Anthropic",
   google: "Google",
@@ -78,6 +79,7 @@ const NOMES: Record<string, string> = {
 /** As casas grandes primeiro (é por elas que se procura); o resto em ordem
  *  alfabética depois. */
 const ORDEM = [
+  "openrouter",
   "openai",
   "anthropic",
   "google",

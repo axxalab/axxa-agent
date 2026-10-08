@@ -49,6 +49,15 @@ describe("getModelCapabilities — ordem de prefixo (o que quebra calado)", () =
         .vision
     ).toBe(false);
   });
+
+  it("openrouter/auto tem vision + tools + streaming", () => {
+    const caps = getModelCapabilities("openrouter", "openrouter/auto");
+    expect(caps).toMatchObject({
+      vision: true,
+      tools: true,
+      streaming: true,
+    });
+  });
 });
 
 describe("getModelCapabilities — overlay :free do OpenRouter", () => {

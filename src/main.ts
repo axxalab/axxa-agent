@@ -262,6 +262,7 @@ const DEFAULT_SETTINGS: AxxaSettings = {
       "gemini-3.1-flash-lite",
     ],
     openrouter: [
+      "openrouter/auto",
       "anthropic/claude-3.5-sonnet",
       "openai/gpt-4o",
       "meta-llama/llama-3.3-70b-instruct",

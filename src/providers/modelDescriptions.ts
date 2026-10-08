@@ -106,6 +106,7 @@ const GEMINI_CARDS: CardEntry[] = [
 
 // ─────────────────────────── OpenRouter ───────────────────────────
 const OPENROUTER_CARDS: CardEntry[] = [
+  { prefix: "openrouter/auto", card: { category: "chat-vision", description: "OpenRouter Auto Router — routes prompts dynamically to the best model including vision.", contextWindow: 128_000, goodFor: "Auto model selection, vision" } },
   // Reusa descrições dos upstreams quando possível
   { prefix: "anthropic/claude-opus-4", card: { category: "chat-vision", description: "Claude Opus 4 via OpenRouter — proxied. Upstream pricing + small margin.", contextWindow: 200_000 } },
   { prefix: "anthropic/claude-sonnet-4", card: { category: "chat-vision", description: "Claude Sonnet 4 via OpenRouter.", contextWindow: 200_000 } },
@@ -221,6 +222,7 @@ export interface ModelFullInfo {
  * "3.5 Sonnet", "llama3.2:latest" → "Llama3.2". Usado no pill do composer + sheet.
  */
 export function prettyModelName(id: string): string {
+  if (id === "openrouter/auto") return "Auto Router";
   let s = (id || "").trim();
   if (s.includes("/")) s = s.slice(s.lastIndexOf("/") + 1); // vendor/model → model
   // A tag do Ollama sai (":latest", ":q4_K_M")… menos quando é o TAMANHO
