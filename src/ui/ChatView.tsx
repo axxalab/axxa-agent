@@ -2214,6 +2214,59 @@ function ReadAloudButton({
   );
 }
 
+/**
+ * Copia o texto de uma mensagem (a sua, ou a resposta em markdown cru, com os
+ * [[links]] como estão). O `writeText` vai PRIMEIRO, sem nada esperado antes:
+ * no celular o sistema só aceita escrever na área de transferência dentro do
+ * próprio toque (achado na 0.7.41). E pela janela do botão — a conversa pode
+ * estar numa janela destacada.
+ */
+function CopyButton({
+  text,
+  label,
+  iconOnly,
+}: {
+  text: string;
+  label: string;
+  iconOnly?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    []
+  );
+  return (
+    <button
+      type="button"
+      className={"axxa-msg-listen axxa-msg-copy" + (copied ? " is-copied" : "")}
+      aria-label={copied ? tr("Copied") : label}
+      onClick={(e) => {
+        const area = e.currentTarget.win.navigator.clipboard;
+        const escrita = area?.writeText
+          ? area.writeText(text)
+          : Promise.reject(new Error("no clipboard"));
+        escrita.then(
+          () => {
+            setCopied(true);
+            if (timer.current !== null) window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(() => setCopied(false), 1500);
+          },
+          () => {
+            warn();
+            new Notice(tr("Couldn't copy. Select the text and use the system Copy."));
+          }
+        );
+      }}
+    >
+      <Icon name={copied ? "check" : "copy"} size={15} />
+      {!iconOnly && <span>{copied ? tr("Copied") : tr("Copy")}</span>}
+    </button>
+  );
+}
+
 /** Uma linha da conversa. `memo` de propósito: sem ele, cada TECLA do
  *  composer re-renderizava a conversa inteira — medido em 2,33ms com 5
  *  mensagens contra 8,23ms com 120. O que muda numa mensagem já pronta é
@@ -2240,9 +2293,15 @@ const MessageRow = memo(function MessageRow({
 }) {
   switch (msg.type) {
     case "user":
+      // A bolha e, embaixo dela, o copiar. O invólucro existe pra o botão não
+      // engordar a bolha nem ficar longe dela (a lista tem gap grande); o
+      // `data-msg` sobe pra ele, e o "ir pra mensagem" cai no mesmo lugar.
       return (
-        <div className="axxa-msg axxa-msg-user" data-msg={msg.id}>
-          <div className="axxa-msg-text">{msg.content}</div>
+        <div className="axxa-msg-mine" data-msg={msg.id}>
+          <div className="axxa-msg axxa-msg-user">
+            <div className="axxa-msg-text">{msg.content}</div>
+          </div>
+          <CopyButton text={msg.content} label={tr("Copy message")} iconOnly />
         </div>
       );
     case "ai-response":
@@ -2276,8 +2335,15 @@ const MessageRow = memo(function MessageRow({
               streaming={streaming}
             />
           )}
-          {plugin.settings.ttsEnabled && !msg.isError && msg.content.trim() && (
-            <ReadAloudButton plugin={plugin} text={msg.content} />
+          {/* Ouvir e copiar só com a resposta pronta: no meio do stream o
+              texto ainda muda, e copiar pela metade engana. */}
+          {!streaming && msg.content.trim() && (
+            <div className="axxa-msg-actions">
+              {plugin.settings.ttsEnabled && !msg.isError && (
+                <ReadAloudButton plugin={plugin} text={msg.content} />
+              )}
+              <CopyButton text={msg.content} label={tr("Copy answer")} />
+            </div>
           )}
           {msg.truncated && <small className="axxa-msg-note">{tr("truncated")}</small>}
           {actions && actions.length > 0 && (

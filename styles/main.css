@@ -2978,6 +2978,11 @@ body.theme-dark {
 .axxa-root .axxa-markdown {
   white-space: pre-wrap;
   word-break: break-word;
+  /* O Obsidian põe `user-select: none` no body inteiro e só devolve a seleção
+     às notas — sem isto, nada da conversa se selecionava (nem o toque longo
+     do celular, nem o arrastar + Ctrl+C). O iOS só lê a versão com prefixo. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .axxa-root .axxa-markdown {
@@ -6366,6 +6371,39 @@ input[type="range"].axxa-slider::-webkit-slider-thumb {
 
 .axxa-root button.axxa-msg-listen.is-on {
   color: var(--text-accent);
+}
+
+/* Ouvir + Copiar, lado a lado embaixo da resposta. */
+.axxa-root .axxa-msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--axxa-1);
+}
+
+/* A mensagem enviada: a bolha à direita e, embaixo dela, o copiar. */
+.axxa-root .axxa-msg-mine {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+}
+
+.axxa-root .axxa-msg-mine button.axxa-msg-copy {
+  align-self: flex-end;
+}
+
+/* Copiado: o verde e o ✓ por um instante, como o copiar de bloco de código
+   do próprio Obsidian. */
+.axxa-root button.axxa-msg-listen.is-copied {
+  color: var(--text-success, var(--color-green));
+}
+
+/* No desktop o copiar da SUA mensagem só aparece com o mouse em cima (ou o
+   foco no botão) — quatro ícones repetidos por tela viram ruído. No celular
+   não existe hover: fica sempre. */
+body:not(.is-mobile) .axxa-root .axxa-msg-mine:not(:hover):not(:focus-within) button.axxa-msg-copy {
+  opacity: 0;
 }
 
 /* A coluna do modo de voz: o texto reconhecido em cima, o dock embaixo. */
