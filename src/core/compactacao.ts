@@ -82,7 +82,8 @@ export function janelaNoErro(texto: string): number | null {
 
 /** Guarda a janela que o erro do provider revelou (vale pra sessão). */
 export function aprenderJanela(provider: string, model: string, erro: unknown): void {
-  const n = janelaNoErro(erro instanceof Error ? erro.message : String(erro ?? ""));
+  const texto = erro instanceof Error ? erro.message : typeof erro === "string" ? erro : "";
+  const n = janelaNoErro(texto);
   if (n) aprendidas.set(`${provider}|${model}`, n);
 }
 
@@ -154,20 +155,14 @@ function parado(): DOMException {
 function ateParar<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return p;
   if (signal.aborted) return Promise.reject(parado());
-  return new Promise<T>((ok, falha) => {
-    const aoParar = () => falha(parado());
+  let aoParar = (): void => undefined;
+  const parou = new Promise<never>((_, falha) => {
+    aoParar = () => falha(parado());
     signal.addEventListener("abort", aoParar, { once: true });
-    p.then(
-      (v) => {
-        signal.removeEventListener("abort", aoParar);
-        ok(v);
-      },
-      (e: unknown) => {
-        signal.removeEventListener("abort", aoParar);
-        falha(e);
-      }
-    );
   });
+  // Decidido um dos dois, o Parar deixa de ouvir (e `parou` nunca mais
+  // rejeita sozinho, sem ninguém esperando).
+  return Promise.race([p, parou]).finally(() => signal.removeEventListener("abort", aoParar));
 }
 
 // ── onde cortar ──────────────────────────────────────────────────────────
