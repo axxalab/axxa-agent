@@ -110,6 +110,7 @@ export const PT_CHAT: Record<string, string> = {
   "Copied": "Copiado",
   "Copy answer": "Copiar resposta",
   "Copy message": "Copiar mensagem",
+  "Earlier messages summarized for the model": "Mensagens anteriores resumidas para o modelo",
   "Couldn't copy. Select the text and use the system Copy.":
     "Não deu pra copiar. Selecione o texto e use o Copiar do sistema.",
   "Listen": "Ouvir",

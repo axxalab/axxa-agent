@@ -10,7 +10,7 @@
 
 import type { MessageAttachment, NoteAttachment } from "../providers/base";
 import { mensagensDoTurno, useChatStore, type ChatMessage } from "../store/chat";
-import { montarContexto, trechosNovos } from "../agent/conversation";
+import { inicioVisivel, montarContexto, trechosNovos } from "../agent/conversation";
 import { getModelCapabilities } from "../providers/modelCapabilities";
 import type { AIErrorCode } from "../store/chat";
 
@@ -65,7 +65,11 @@ export function gravarContextoDoTurno(
 ): void {
   const ultima = ultimaDoUsuario();
   if (!ultima) return;
-  const anteriores = mensagensDoTurno(useChatStore.getState())
+  // Só o que o modelo ainda vê: o contexto de antes do resumo não vai mais,
+  // e o trecho que a busca achou de novo precisa voltar.
+  const msgs = mensagensDoTurno(useChatStore.getState());
+  const anteriores = msgs
+    .slice(inicioVisivel(msgs))
     .filter((m): m is Extract<ChatMessage, { type: "user" }> => m.type === "user" && m.id !== ultima.id)
     .map((m) => m.contexto ?? "")
     .filter(Boolean);

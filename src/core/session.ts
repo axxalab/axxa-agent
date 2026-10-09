@@ -86,6 +86,7 @@ export function mensagensParaGravar(msgs: readonly ChatMessage[]): ChatMessageSt
         content: m.content,
         timestamp: m.timestamp,
         ...(m.contexto ? { contexto: m.contexto } : {}),
+        ...(m.resumo ? { resumo: m.resumo } : {}),
       });
     } else if (m.type === "ai-response") {
       const passos = m.agentSteps && m.agentSteps.length > 0 ? m.agentSteps : undefined;
@@ -689,6 +690,7 @@ export class ChatSession {
           ? { agentSteps: m.agentSteps }
           : {}),
         ...(m.type === "user" && m.contexto ? { contexto: m.contexto } : {}),
+        ...(m.type === "user" && m.resumo ? { resumo: m.resumo } : {}),
         ...(m.type === "ai-response" && m.isError ? { isError: true } : {}),
       }));
 

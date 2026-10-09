@@ -40,6 +40,13 @@ export interface UserMessage extends BaseMessage {
   /** Imagens e PDFs desta mensagem (só na sessão: não vão pro arquivo). Vão
    *  de novo em todo turno, no lugar onde foram mandados. */
   anexos?: MessageAttachment[];
+  /**
+   * O resumo de tudo o que veio ANTES desta mensagem (ver core/compactacao).
+   * Quando a conversa não cabe mais na janela do modelo, o começo dela vira
+   * este texto: dali em diante o modelo recebe o resumo + as mensagens a
+   * partir desta. A tela continua mostrando tudo.
+   */
+  resumo?: string;
 }
 
 export interface AIResponseMessage extends BaseMessage {
@@ -83,6 +90,9 @@ export interface ActivityMeta {
   phase: "pending" | "done" | "failed";
   /** Ícone Lucide enquanto pending (pulsando). Ex: "eye", "file-pen-line". */
   iconPending: string;
+  /** O que a linha do "pensando" diz no lugar do verbo da vez, enquanto isto
+   *  roda (ex.: "Resumindo o começo da conversa…"). */
+  agora?: string;
   /** Ícone Lucide quando done (estático). Default: "check". */
   iconDone?: string;
   /** Ícone Lucide quando failed. Default: "x". */
@@ -305,6 +315,8 @@ interface ChatState {
   setAgentSteps: (id: string, steps: AIToolStep[]) => void;
   /** Grava o contexto (vault + notas) que foi junto com uma mensagem do usuário. */
   setContexto: (id: string, contexto: string) => void;
+  /** Grava o resumo do que veio antes de uma mensagem do usuário. */
+  setResumo: (id: string, resumo: string) => void;
   /** Tira de uma mensagem do usuário o contexto e/ou os anexos (o turno dela
    *  falhou POR causa deles — reenviar em todo turno travava a conversa). */
   descartarDaMensagem: (id: string, oQue: { contexto?: boolean; anexos?: boolean }) => void;
@@ -561,6 +573,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) =>
       escritaDoTurno(state, (ms) =>
         ms.map((m) => (m.id === id && m.type === "user" ? { ...m, contexto } : m))
+      )
+    ),
+  setResumo: (id, resumo) =>
+    set((state) =>
+      escritaDoTurno(state, (ms) =>
+        ms.map((m) => {
+          if (m.type !== "user") return m;
+          if (m.id === id) return { ...m, resumo };
+          // O resumo novo já soma os anteriores: os velhos saem (uma
+          // divisória só na tela, e o arquivo não cresce à toa).
+          if (!m.resumo) return m;
+          const r = { ...m };
+          delete r.resumo;
+          return r;
+        })
       )
     ),
   descartarDaMensagem: (id, oQue) =>

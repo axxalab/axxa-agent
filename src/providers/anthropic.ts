@@ -355,7 +355,7 @@ function buildBody(req: ProviderRequest, stream: boolean): AnthropicBody {
 
   const body: AnthropicBody = {
     model: req.model,
-    max_tokens: resolveMaxTokens("anthropic", req.model, req.maxTokens ?? 2000, req.effort),
+    max_tokens: resolveMaxTokens("anthropic", req.model, req.maxTokens ?? 2000, req.effort, req.maxTokensTeto),
     messages,
     stream,
   };

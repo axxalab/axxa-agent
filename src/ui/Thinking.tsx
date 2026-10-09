@@ -98,10 +98,14 @@ export function ThinkingLine({
   /** Quando a rodada começou (ms). */
   since,
   onOpen,
+  /** O que está acontecendo, quando não é "pensar" (ex.: resumindo a
+   *  conversa) — no lugar do verbo da vez. */
+  rotulo,
 }: {
   count: number;
   since: number;
   onOpen: () => void;
+  rotulo?: string;
 }) {
   const [agora, setAgora] = useState(() => Date.now());
   const sinceRef = useRef(since);
@@ -131,7 +135,7 @@ export function ThinkingLine({
       <span className="axxa-thinking-label">
         <span className="axxa-thinking-time">{elapsedLabel(passado)}</span>
         <span className="axxa-thinking-dot"> · </span>
-        {tr(texto)}…
+        {rotulo ?? `${tr(texto)}…`}
       </span>
       {count > 0 && <Icon name="chevron-right" size={15} />}
     </button>

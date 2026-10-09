@@ -41,6 +41,16 @@ import type { MessageAttachment, ProviderMessage } from "../providers/base";
 import type { AIToolStep, PermissionLevel } from "../agent/types";
 import type { EngineCtx } from "./chatEngine";
 import { buscarContextoDoVault } from "./vaultLookup";
+import {
+  aprenderJanela,
+  caberNaJanela,
+  ehEstouro,
+  encolherResultados,
+  janelaDoModelo,
+  tetoDaResposta,
+  type ResultadoDaJanela,
+} from "./compactacao";
+import { tokensDoPedido } from "../providers/ollama";
 
 export interface AgentCtx extends EngineCtx {
   /** "Aprovar todas" da rodada — resetado a cada turno. */
@@ -160,22 +170,21 @@ export async function runAgentTurn(
   // chegavam ao modelo de jeito nenhum (só imagem e PDF passavam).
   gravarContextoDoTurno(vaultContextBlock, userAttachments);
   const turno = estadoDoTurno();
-  const history: ProviderMessage[] = [
-    {
-      role: "system",
-      content: buildAgentSystemPrompt(
-        turno.persona,
-        t.agent.systemPrompt + (webLigada ? t.agent.webPrompt : ""),
-        useVault ? t.systemPrompt.vaultQaSuffix : undefined,
-        turno.instrucoes
-      ),
-    },
-    // toolMode=true → agentSteps são expandidos pro shape wire (replay preciso).
-    ...storeMessagesToProvider(turno.mensagens, {
-      toolMode: true,
-      ...oQueOModeloLe(activeProviderId, activeModel),
-    }),
+  const systemDoAgente = buildAgentSystemPrompt(
+    turno.persona,
+    t.agent.systemPrompt + (webLigada ? t.agent.webPrompt : ""),
+    useVault ? t.systemPrompt.vaultQaSuffix : undefined,
+    turno.instrucoes
+  );
+  // toolMode=true → agentSteps são expandidos pro shape wire (replay preciso).
+  const opcoesDoHistorico = { toolMode: true, ...oQueOModeloLe(activeProviderId, activeModel) };
+  // Lido de novo quando o começo vira resumo (ver core/compactacao).
+  const montarHistorico = (): ProviderMessage[] => [
+    { role: "system", content: systemDoAgente },
+    ...storeMessagesToProvider(estadoDoTurno().mensagens, opcoesDoHistorico),
   ];
+  // Preenchido no começo da rodada (depois de caber na janela).
+  const history: ProviderMessage[] = [];
 
   const tools = TOOL_DEFINITIONS.filter((td) => !foraDaLista(td.name)).map((td) => ({
     name: td.name,
@@ -184,6 +193,45 @@ export async function runAgentTurn(
   }));
 
   const apiKey = apiKeyFor(activeProviderId);
+  const donoDaRodada =
+    useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+  const maxTokensDoNivel = effortToMaxTokensSmart(
+    effort,
+    getContextWindow(activeModel),
+    plugin.settings.effortConfigs
+  );
+  // A conversa cabe na janela do modelo? Se não, o começo vira resumo — o
+  // "Pensando…" diz "Resumindo…" enquanto isso.
+  // Com o começo resumido, o contexto deste turno é refeito (um trecho do
+  // vault que ficou de fora por já estar numa mensagem que agora é resumo
+  // volta).
+  const caber = async (apertado: boolean): Promise<ResultadoDaJanela> => {
+    const r = await caberNaJanela({
+      provider: activeProvider,
+      providerId: activeProviderId,
+      model: activeModel,
+      apiKey,
+      system: systemDoAgente,
+      opcoes: opcoesDoHistorico,
+      tools,
+      maxTokens: maxTokensDoNivel,
+      dono: donoDaRodada,
+      apertado,
+      signal: controller.signal,
+      avisar: (fase) =>
+        updateActivity(
+          commentId,
+          fase === "resumindo"
+            ? { pendingText: t.ai.compacting, agora: t.ai.compacting }
+            : { pendingText: t.agent.thinking, agora: undefined }
+        ),
+    });
+    if (r.resumiu) gravarContextoDoTurno(vaultContextBlock, userAttachments);
+    return r;
+  };
+  let janela = 0;
+  // Quantas vezes a rodada já se recuperou de um "não cabe" do provider.
+  let recuperacoes = 0;
 
   // MAX_TURNS vem do effort config (0 = sem teto; loop detection é o limite).
   const MAX_TURNS = effortCfg.agentMaxTurns;
@@ -201,6 +249,11 @@ export async function runAgentTurn(
   try {
     // Pararam durante a busca: nada sai (o finally desliga o "respondendo").
     if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+    janela = (await caber(false)).janela;
+    if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+    history.push(...montarHistorico());
+    // Até aqui é a conversa; o que vier depois é desta rodada.
+    let tamanhoDaConversa = history.length;
     while (isUncapped || turn < MAX_TURNS) {
       turn++;
       // Stop entre turnos.
@@ -229,17 +282,20 @@ export async function runAgentTurn(
       let ultimoUso: UsoDoPedido | null = null;
       const donoDoPedido =
         useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+      // A resposta cabe junto com o pedido, que cresce a cada passo — e o
+      // teto vale depois do piso dos modelos que pensam.
+      const tetoDaJanela = tetoDaResposta(
+        janela,
+        tokensDoPedido({ model: activeModel, messages: history, tools })
+      );
       let response;
       try {
         response = await activeProvider.streamChat(
           {
             model: activeModel,
             messages: history,
-            maxTokens: effortToMaxTokensSmart(
-              effort,
-              getContextWindow(activeModel),
-              plugin.settings.effortConfigs
-            ),
+            maxTokens: maxTokensDoNivel,
+            maxTokensTeto: tetoDaJanela,
             temperature: effortCfg.temperature,
             effort: isEffortLevel(effort) ? effort : undefined,
             tools,
@@ -252,6 +308,38 @@ export async function runAgentTurn(
           },
           controller.signal
         );
+      } catch (err) {
+        // Recusado por TAMANHO antes de responder: o provider disse quanto
+        // cabe (guardado pros próximos). No 1º pedido, o começo da conversa
+        // vira resumo; no meio da rodada, os resultados de ferramenta mais
+        // antigos encolhem. E o pedido vai de novo (até 3 vezes na rodada).
+        if (responseId !== null || !ehEstouro(err) || controller.signal.aborted || recuperacoes >= 3) {
+          throw err;
+        }
+        aprenderJanela(activeProviderId, activeModel, err);
+        recuperacoes++;
+        // A janela que o provider disse (se disse) vale já nesta tentativa.
+        janela = await janelaDoModelo(activeProviderId, activeModel, apiKey);
+        let mudou: boolean;
+        if (history.length === tamanhoDaConversa) {
+          const segunda = await caber(true);
+          janela = segunda.janela;
+          mudou = segunda.resumiu;
+          if (mudou) {
+            history.splice(0, history.length, ...montarHistorico());
+            tamanhoDaConversa = history.length;
+          }
+        } else {
+          mudou = encolherResultados(history) > 0;
+        }
+        // Nada encolheu: só vale tentar de novo se a janela nova encolhe a
+        // resposta.
+        if (!mudou && tetoDaResposta(janela, tokensDoPedido({ model: activeModel, messages: history, tools })) >= tetoDaJanela) {
+          throw err;
+        }
+        endStreamTimer();
+        turn--; // a tentativa recusada não conta como passo
+        continue;
       } finally {
         if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
       }

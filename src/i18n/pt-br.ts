@@ -93,6 +93,7 @@ export const PT_BR: Translations = {
 
   ai: {
     thinking: "Pensando...",
+    compacting: "Resumindo o começo da conversa pra caber no modelo...",
     emptyResponse: "[Resposta vazia]",
     errorPrefix: "[Erro]",
     unknownError: "Erro desconhecido.",

@@ -228,18 +228,26 @@ async function contextoDoModelo(endpoint: string, model: string): Promise<number
   return undefined;
 }
 
+/** Tokens de um anexo, por alto: ~1k por imagem; o PDF pelo tamanho (um
+ *  PDF de texto rende ~1 token a cada 60 bytes — 1 MB ≈ 17k tokens). */
+export function tokensDoAnexo(a: { type: string; dataUrl?: string }): number {
+  if (a.type === "image") return 1000;
+  if (a.type === "pdf") return Math.ceil(((a.dataUrl?.length ?? 0) * 0.75) / 60);
+  return 0;
+}
+
 /** Tokens que um pedido ocupa, por alto: 3 caracteres por token (português e
- *  o JSON das ferramentas rendem menos que os 4 do inglês), ~1k por imagem. */
+ *  o JSON das ferramentas rendem menos que os 4 do inglês), mais os anexos. */
 export function tokensDoPedido(req: ProviderRequest): number {
   let chars = 0;
-  let imagens = 0;
+  let anexos = 0;
   for (const m of req.messages) {
     chars += m.content.length;
     if (m.toolCalls) chars += JSON.stringify(m.toolCalls).length;
-    for (const a of m.attachments ?? []) if (a.type === "image") imagens++;
+    for (const a of m.attachments ?? []) anexos += tokensDoAnexo(a);
   }
   if (req.tools && req.tools.length > 0) chars += JSON.stringify(req.tools).length;
-  return Math.ceil(chars / 3) + imagens * 1000;
+  return Math.ceil(chars / 3) + anexos;
 }
 
 const DEGRAUS_DE_CONTEXTO = [8192, 16384, 32768, 65536, 131072, 262144];
@@ -259,6 +267,18 @@ export function contextoDoOllama(prompt: number, resposta: number, maxModelo?: n
     DEGRAUS_DE_CONTEXTO[DEGRAUS_DE_CONTEXTO.length - 1];
   const teto = maxModelo && maxModelo > 0 ? maxModelo : 32768;
   return Math.min(degrau, teto);
+}
+
+/**
+ * A maior janela que um pedido ao modelo pode ter: o contexto máximo dele (o
+ * /api/show, perguntado uma vez) até o último degrau; sem saber o máximo, os
+ * 32k que o pedido usaria. É o tamanho que a conversa tem pra caber antes de
+ * o Ollama começar a cortar o começo do prompt sem avisar.
+ */
+export async function janelaDoOllama(enderecoCru: string, model: string): Promise<number> {
+  const endpoint = enderecoCru.trim().replace(/\/$/, "");
+  const max = endpoint ? await contextoDoModelo(endpoint, model) : undefined;
+  return contextoDoOllama(Number.MAX_SAFE_INTEGER, 0, max);
 }
 
 /** O num_ctx do último pedido a cada modelo, e quando foi. */
@@ -334,7 +354,13 @@ export class OllamaProvider implements Provider {
     endpoint: string,
     stream: boolean
   ): Promise<Record<string, unknown>> {
-    const numPredict = resolveMaxTokens("ollama", req.model, req.maxTokens ?? 2000, req.effort);
+    const numPredict = resolveMaxTokens(
+      "ollama",
+      req.model,
+      req.maxTokens ?? 2000,
+      req.effort,
+      req.maxTokensTeto
+    );
     const maxModelo = await contextoDoModelo(endpoint, req.model);
     const numCtx = janelaDoPedido(
       `${endpoint}|${req.model}`,

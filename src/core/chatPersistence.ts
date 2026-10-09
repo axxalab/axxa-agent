@@ -32,6 +32,9 @@ export interface ChatMessageStored {
   /** Resposta: a rodada do agente que caiu com erro (o texto é o erro; os
    *  passos são o que ela fez antes de cair). */
   isError?: boolean;
+  /** Mensagem do usuário: o resumo do que veio antes dela (o modelo recebe o
+   *  resumo no lugar das mensagens anteriores). */
+  resumo?: string;
 }
 
 /** Uma linha que é EXATAMENTE um cabeçalho de seção do arquivo. Dentro de uma
@@ -234,6 +237,8 @@ function renderBody(chat: ChatData): string {
       // preview, imune a "## You" lá dentro, e a versão antiga do plugin
       // esconde a linha inteira (ignora chave que não conhece).
       if (m.contexto) meta.push(`ctx=${b64encode(m.contexto)}`);
+      // O resumo do que veio antes — mesmo jeito do contexto.
+      if (m.resumo) meta.push(`sum=${b64encode(m.resumo)}`);
       const metaLine = meta.length > 0 ? `<!-- axxa: ${meta.join(" ")} -->\n` : "";
       // Ações do agent — base64 num comentário (precisão pro replay; invisível
       // no preview). O resumo legível vai no frontmatter tools_used.
@@ -254,6 +259,7 @@ function parseMessageMeta(content: string): {
   reaction?: "like" | "dislike" | null;
   erro?: boolean;
   contexto?: string;
+  resumo?: string;
 } {
   const match = content.match(/^\s*<!--\s*axxa:\s*([^>]+?)\s*-->\s*\n?/);
   if (!match) return { cleanContent: content };
@@ -263,6 +269,7 @@ function parseMessageMeta(content: string): {
   let reaction: "like" | "dislike" | null | undefined;
   let erro: boolean | undefined;
   let contexto: string | undefined;
+  let resumo: string | undefined;
   for (const part of meta.split(/\s+/)) {
     const corte = part.indexOf("=");
     const k = corte < 0 ? part : part.slice(0, corte);
@@ -277,9 +284,15 @@ function parseMessageMeta(content: string): {
       } catch {
         /* base64 estragado: a mensagem fica sem contexto, não some */
       }
+    } else if (k === "sum" && v) {
+      try {
+        resumo = b64decode(v);
+      } catch {
+        /* base64 estragado: sem resumo, o modelo recebe a conversa inteira */
+      }
     }
   }
-  return { cleanContent, timestamp, reaction, erro, contexto };
+  return { cleanContent, timestamp, reaction, erro, contexto, resumo };
 }
 
 // Exportadas pra teste de round-trip (integridade de dados). v0.1.149
@@ -415,7 +428,7 @@ function parseBody(body: string): ChatMessageStored[] {
       next ? next.headingStart : body.length
     );
     // Extrai metadata (timestamp + reaction) da linha HTML comment
-    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta } = parseMessageMeta(
+    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta, resumo } = parseMessageMeta(
       rawContent.trim()
     );
     // Extrai as ações do agent (comentário base64) e tira do conteúdo visível.
@@ -433,6 +446,7 @@ function parseBody(body: string): ChatMessageStored[] {
       ...(reaction != null ? { reaction } : {}),
       ...(agentSteps ? { agentSteps } : {}),
       ...(contexto && cur.type === "user" ? { contexto } : {}),
+      ...(resumo && cur.type === "user" ? { resumo } : {}),
       ...(erro && cur.type === "ai-response" ? { isError: true } : {}),
     });
   }

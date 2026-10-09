@@ -25,6 +25,14 @@ import type { getTranslations } from "../i18n";
 import type { MessageAttachment, ProviderMessage, Usage } from "../providers/base";
 import type AxxaPlugin from "../main";
 import { buscarContextoDoVault } from "./vaultLookup";
+import {
+  aprenderJanela,
+  caberNaJanela,
+  ehEstouro,
+  tetoDaResposta,
+  type ResultadoDaJanela,
+} from "./compactacao";
+import { tokensDoPedido } from "../providers/ollama";
 
 /** Ref mutável do AbortController do turno em andamento (null = ocioso). */
 export interface AbortRef {
@@ -165,84 +173,152 @@ export async function streamReply(
       instructions: turno.instrucoes,
       styleInstruction: resolveStyleInstruction(),
     });
-    const history: ProviderMessage[] = [
+    const opcoesDoHistorico = oQueOModeloLe(activeProviderId, activeModel);
+    // Lido de novo a cada pedido: o resumo (abaixo) muda o começo.
+    const montarHistorico = (): ProviderMessage[] => [
       { role: "system", content: fullSystem },
-      ...storeMessagesToProvider(turno.mensagens, oQueOModeloLe(activeProviderId, activeModel)),
+      ...storeMessagesToProvider(estadoDoTurno().mensagens, opcoesDoHistorico),
     ];
 
     const apiKey = apiKeyFor(activeProviderId);
-    const maxTokens = effortToMaxTokensSmart(
+    const maxTokensDoNivel = effortToMaxTokensSmart(
       effort,
       getContextWindow(activeModel),
       plugin.settings.effortConfigs
     );
+    // O que cabe na janela junto com o pedido (ver pedir) e o teto que de
+    // fato foi pro provider.
+    let tetoDaJanela: number | undefined;
+    let tetoEnviado = 0;
     let lastOutputTokens = 0;
-    let ultimoUso: Usage | null = null;
     // A conversa DESTE pedido (o uso vai pra ela mesmo que você troque de
     // conversa no meio, ou ela vá pro segundo plano).
     const donoDoPedido = useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
 
-    startStreamTimer();
-    try {
-    await activeProvider.streamChat(
-      {
+    // A conversa cabe na janela do modelo? Se não, o começo vira resumo (ver
+    // core/compactacao) — o "Pensando…" diz "Resumindo…" enquanto isso. Com
+    // o começo resumido, o contexto deste turno é refeito: um trecho do vault
+    // que ficou de fora por já estar numa mensagem que agora é resumo volta.
+    const caber = async (apertado: boolean): Promise<ResultadoDaJanela> => {
+      const r = await caberNaJanela({
+        provider: activeProvider,
+        providerId: activeProviderId,
         model: activeModel,
-        messages: history,
-        maxTokens,
-        temperature: effortCfg.temperature,
-        effort: isEffortLevel(effort) ? effort : undefined,
-        cacheKey: chaveDeCache(donoDoPedido),
-      },
-      apiKey,
-      (token) => {
-        if (responseId === null) {
-          updateActivity(commentId, { phase: "done" });
-          responseId = addMessage({ type: "ai-response", content: token });
-          setStreamingMessageId(responseId);
-          // Flush do raciocínio bufferizado antes do 1º token de conteúdo.
-          if (reasoningBuf) {
-            useChatStore.getState().appendReasoning(responseId, reasoningBuf);
-            reasoningBuf = "";
+        apiKey,
+        system: fullSystem,
+        opcoes: opcoesDoHistorico,
+        maxTokens: maxTokensDoNivel,
+        dono: donoDoPedido,
+        apertado,
+        signal: controller.signal,
+        avisar: (fase) =>
+          updateActivity(
+            commentId,
+            fase === "resumindo"
+              ? { pendingText: t.ai.compacting, agora: t.ai.compacting }
+              : { pendingText: t.ai.thinking, agora: undefined }
+          ),
+      });
+      if (r.resumiu) gravarContextoDoTurno(vaultContextBlock, userAttachments);
+      return r;
+    };
+    let { janela } = await caber(false);
+    if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+    const pedir = async (history: ProviderMessage[]): Promise<void> => {
+      // A resposta cabe junto com o pedido (vários providers recusam se
+      // passar) — e vale depois do piso dos modelos que pensam.
+      tetoDaJanela = tetoDaResposta(janela, tokensDoPedido({ model: activeModel, messages: history }));
+      tetoEnviado = resolveMaxTokens(
+        activeProviderId,
+        activeModel,
+        maxTokensDoNivel,
+        isEffortLevel(effort) ? effort : undefined,
+        tetoDaJanela
+      );
+      let ultimoUso: Usage | null = null;
+      startStreamTimer();
+      try {
+        await activeProvider.streamChat(
+          {
+            model: activeModel,
+            messages: history,
+            maxTokens: maxTokensDoNivel,
+            maxTokensTeto: tetoDaJanela,
+            temperature: effortCfg.temperature,
+            effort: isEffortLevel(effort) ? effort : undefined,
+            cacheKey: chaveDeCache(donoDoPedido),
+          },
+          apiKey,
+          (token) => {
+            if (responseId === null) {
+              updateActivity(commentId, { phase: "done" });
+              responseId = addMessage({ type: "ai-response", content: token });
+              setStreamingMessageId(responseId);
+              // Flush do raciocínio bufferizado antes do 1º token de conteúdo.
+              if (reasoningBuf) {
+                useChatStore.getState().appendReasoning(responseId, reasoningBuf);
+                reasoningBuf = "";
+              }
+            } else {
+              appendToMessage(responseId, token);
+            }
+            tickStreamTokens(token);
+          },
+          (usage) => {
+            // Só GUARDA: há provider que manda o uso em todo pedaço do stream (o
+            // Gemini manda), e somar cada um multiplicava os tokens da conversa.
+            // A soma é uma por pedido, quando o stream acaba (abaixo).
+            lastOutputTokens = usage.output;
+            ultimoUso = usage;
+          },
+          controller.signal,
+          (reasoningDelta) => {
+            // Reasoning costuma vir ANTES do conteúdo (R1). Buffera até a
+            // ai-response existir; depois acumula direto na mensagem.
+            reasoningBuf += reasoningDelta;
+            if (responseId !== null) {
+              useChatStore.getState().appendReasoning(responseId, reasoningDelta);
+            }
           }
-        } else {
-          appendToMessage(responseId, token);
-        }
-        tickStreamTokens(token);
-      },
-      (usage) => {
-        // Só GUARDA: há provider que manda o uso em todo pedaço do stream (o
-        // Gemini manda), e somar cada um multiplicava os tokens da conversa.
-        // A soma é uma por pedido, quando o stream acaba (abaixo).
-        lastOutputTokens = usage.output;
-        ultimoUso = usage;
-      },
-      controller.signal,
-      (reasoningDelta) => {
-        // Reasoning costuma vir ANTES do conteúdo (R1). Buffera até a
-        // ai-response existir; depois acumula direto na mensagem.
-        reasoningBuf += reasoningDelta;
-        if (responseId !== null) {
-          useChatStore.getState().appendReasoning(responseId, reasoningDelta);
-        }
+        );
+      } finally {
+        // Uma soma por pedido — também quando parou no meio (o que chegou foi
+        // gasto).
+        if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
       }
-    );
-    } finally {
-      // Uma soma por pedido — também quando parou no meio (o que chegou foi
-      // gasto).
-      if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
+      endStreamTimer();
+    };
+
+    try {
+      await pedir(montarHistorico());
+    } catch (err) {
+      // Recusado por TAMANHO antes de responder: o provider disse quanto
+      // cabe (guardado pros próximos), o começo vira resumo com mais folga e
+      // o pedido vai de novo — uma vez. Sem o que resumir, ainda vai de novo
+      // se a janela que ele disse encolhe a resposta.
+      if (responseId !== null || !ehEstouro(err) || controller.signal.aborted) throw err;
+      aprenderJanela(activeProviderId, activeModel, err);
+      const enviadoAntes = tetoEnviado;
+      const segunda = await caber(true);
+      janela = segunda.janela;
+      if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const history = montarHistorico();
+      const tetoNovo = resolveMaxTokens(
+        activeProviderId,
+        activeModel,
+        maxTokensDoNivel,
+        isEffortLevel(effort) ? effort : undefined,
+        tetoDaResposta(janela, tokensDoPedido({ model: activeModel, messages: history }))
+      );
+      if (!segunda.resumiu && tetoNovo >= enviadoAntes) throw err;
+      await pedir(history);
     }
-    endStreamTimer();
 
     // Heurística de truncamento: output ≈ teto de tokens → "Continuar". O
-    // teto é o que FOI pro provider: modelo que pensa recebe um piso bem acima
-    // do nível (ver paramPolicy) — comparar com o do nível acusaria corte em
-    // toda resposta dele.
-    const tetoEnviado = resolveMaxTokens(
-      activeProviderId,
-      activeModel,
-      maxTokens,
-      isEffortLevel(effort) ? effort : undefined
-    );
+    // teto é o que FOI pro provider (tetoEnviado, em pedir): modelo que pensa
+    // recebe um piso bem acima do nível (ver paramPolicy) — comparar com o do
+    // nível acusaria corte em toda resposta dele.
     if (
       responseId !== null &&
       lastOutputTokens > 0 &&

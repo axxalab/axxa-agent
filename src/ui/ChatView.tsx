@@ -365,6 +365,17 @@ export function ChatView({
     ultima.id === streamingId &&
     ultima.content.length > 0;
   const pensandoAgora = (isLoading || liveTurn.length > 0) && !jaEscrevendo;
+  // O que a rodada está fazendo agora, quando não é pensar (resumindo a
+  // conversa, por exemplo): a atividade mais recente que ainda roda e diz.
+  const fazendoAgora = useMemo(() => {
+    for (let i = liveTurn.length - 1; i >= 0; i--) {
+      const a = liveTurn[i];
+      if (a.kind === "activity" && a.activity.phase === "pending" && a.activity.agora) {
+        return a.activity.agora;
+      }
+    }
+    return undefined;
+  }, [liveTurn]);
 
   // Quando esta espera começou — é daqui que sai o relógio da linha. Em ref
   // pra não reiniciar a cada render; zera quando a espera acaba.
@@ -1142,6 +1153,7 @@ ${tr("Open Settings › Providers to add it, then run the connection test.")}`,
           <ThinkingLine
             count={liveTurn.length}
             since={pensandoDesde}
+            rotulo={fazendoAgora}
             onOpen={() => {
               if (liveTurn.length === 0) return;
               setTools(liveTurn);
@@ -2297,12 +2309,25 @@ const MessageRow = memo(function MessageRow({
       // engordar a bolha nem ficar longe dela (a lista tem gap grande); o
       // `data-msg` sobe pra ele, e o "ir pra mensagem" cai no mesmo lugar.
       return (
-        <div className="axxa-msg-mine" data-msg={msg.id}>
-          <div className="axxa-msg axxa-msg-user">
-            <div className="axxa-msg-text">{msg.content}</div>
+        <>
+          {/* O corte do resumo (core/compactacao): daqui pra cima, o modelo
+              recebe só o resumo. A conversa continua toda aqui; abrir mostra
+              o que ele recebe no lugar. */}
+          {msg.resumo && (
+            <details className="axxa-resumo-marca">
+              <summary>{tr("Earlier messages summarized for the model")}</summary>
+              <div className="axxa-resumo-texto">
+                <Markdown app={plugin.app} text={msg.resumo} streaming={false} />
+              </div>
+            </details>
+          )}
+          <div className="axxa-msg-mine" data-msg={msg.id}>
+            <div className="axxa-msg axxa-msg-user">
+              <div className="axxa-msg-text">{msg.content}</div>
+            </div>
+            <CopyButton text={msg.content} label={tr("Copy message")} iconOnly />
           </div>
-          <CopyButton text={msg.content} label={tr("Copy message")} iconOnly />
-        </div>
+        </>
       );
     case "ai-response":
       return (

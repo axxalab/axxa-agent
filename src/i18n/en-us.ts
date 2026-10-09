@@ -104,6 +104,7 @@ export const EN_US = {
 
   ai: {
     thinking: "Thinking...",
+    compacting: "Summarizing the start of the conversation to fit the model...",
     emptyResponse: "[Empty response received]",
     errorPrefix: "[Error]",
     unknownError: "Unknown error.",

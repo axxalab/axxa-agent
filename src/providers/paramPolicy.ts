@@ -218,15 +218,18 @@ export function pisoPensando(effort?: EffortLevel): number {
   return 16000;
 }
 
-/** maxTokens FINAL: o piso de quem pensa, depois o teto de output do modelo. */
+/** maxTokens FINAL: o piso de quem pensa, depois o teto de output do modelo
+ *  e, por último, o que ainda cabe na janela (`teto`, quando o motor sabe). */
 export function resolveMaxTokens(
   provider: string,
   model: string,
   requested: number,
-  effort?: EffortLevel
+  effort?: EffortLevel,
+  teto?: number
 ): number {
   const pedido = pensaAntes(provider, model) ? Math.max(requested, pisoPensando(effort)) : requested;
-  return Math.min(pedido, maxOutputTokens(provider, model));
+  const doModelo = Math.min(pedido, maxOutputTokens(provider, model));
+  return teto && teto > 0 ? Math.min(doModelo, teto) : doModelo;
 }
 
 /** O nível do Effort nos três degraus que todo provider com esse controle

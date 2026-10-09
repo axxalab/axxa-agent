@@ -93,6 +93,10 @@ export interface ProviderRequest {
    *  vez de pagar o histórico inteiro de novo. Sem ela (títulos, assistente,
    *  pedido avulso), nada é gravado: gravar custa mais e ninguém relê. */
   cacheKey?: string;
+  /** O teto DURO da resposta: o que ainda cabe na janela junto com o pedido
+   *  (ver core/compactacao). Vale depois de tudo — inclusive do piso que os
+   *  modelos que pensam ganham, que sem isto passava da janela. */
+  maxTokensTeto?: number;
 }
 
 export interface ProviderResponse {

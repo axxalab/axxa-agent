@@ -6406,6 +6406,59 @@ body:not(.is-mobile) .axxa-root .axxa-msg-mine:not(:hover):not(:focus-within) bu
   opacity: 0;
 }
 
+/* O corte do resumo: uma linha fina com o aviso no meio; daqui pra cima o
+   modelo recebe só o resumo (core/compactacao). Abrir mostra o resumo. */
+.axxa-root .axxa-resumo-marca {
+  align-self: stretch;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.axxa-root .axxa-resumo-marca > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--axxa-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+/* O WebKit (iOS) não esconde o triângulo com list-style. */
+.axxa-root .axxa-resumo-marca > summary::-webkit-details-marker {
+  display: none;
+}
+
+.axxa-root .axxa-resumo-marca > summary::before,
+.axxa-root .axxa-resumo-marca > summary::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.axxa-root .axxa-resumo-marca > summary:hover {
+  color: var(--text-normal);
+}
+
+.axxa-root .axxa-resumo-texto {
+  margin-top: var(--axxa-2);
+  padding: var(--axxa-3);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+/* O resumo inteiro num tamanho só (a markdown da resposta usa o maior), e os
+   títulos no tamanho do texto: é um aviso, não um documento. */
+.axxa-root .axxa-resumo-texto .axxa-markdown {
+  font-size: var(--font-ui-small);
+}
+
+.axxa-root .axxa-resumo-texto :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--axxa-2) 0 var(--axxa-1);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
 /* A coluna do modo de voz: o texto reconhecido em cima, o dock embaixo. */
 .axxa-root .axxa-voice-side {
   display: flex;

@@ -224,7 +224,7 @@ export function buildChatBody(
   const body: Record<string, unknown> = {
     model: req.model,
     messages: toOpenAIMessages(req.messages),
-    [field]: resolveMaxTokens(opts.provider, req.model, req.maxTokens ?? 2000, req.effort),
+    [field]: resolveMaxTokens(opts.provider, req.model, req.maxTokens ?? 2000, req.effort, req.maxTokensTeto),
   };
   // Quanto pensar (reasoning_effort / reasoning.effort), quando o modelo tem.
   aplicarEsforco(body, opts.provider, req.model, req.effort);
@@ -323,7 +323,7 @@ export function mapHttpError(
   // (P1-26) Context-length excedido: todo provider devolve 400 com um texto
   // próprio — sem este mapeamento caía em "unknown" com retry inútil.
   if (
-    /context.{0,8}length|maximum context|context window|too many tokens|prompt is too long|exceeds? the (model'?s? )?context/i.test(
+    /context.{0,8}length|maximum context|context window|context limit|too many tokens|prompt is too long|maximum number of tokens|exceeds? the (model'?s? )?context/i.test(
       detail
     )
   ) {

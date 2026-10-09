@@ -162,6 +162,32 @@ export interface StoreMessageLike {
   contexto?: string;
   /** Mensagem do usuário: imagens e PDFs que foram junto com ela. */
   anexos?: MessageAttachment[];
+  /** Mensagem do usuário: o resumo do que veio antes dela (ver
+   *  core/compactacao). O modelo recebe o resumo no lugar do que veio antes. */
+  resumo?: string;
+}
+
+/**
+ * Onde começa o que o modelo vê: a última mensagem do usuário que leva um
+ * resumo (o que veio antes dela está no resumo), ou o começo da conversa.
+ */
+export function inicioVisivel(messages: readonly StoreMessageLike[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type === "user" && m.resumo) return i;
+  }
+  return 0;
+}
+
+/** O resumo como ele vai pro modelo, no começo da mensagem do corte. */
+export function blocoDoResumo(resumo: string): string {
+  return (
+    "<conversation_summary>\n" +
+    "The earlier part of this conversation was summarized to fit the context window. " +
+    "The messages before this point are not shown; this summary replaces them.\n\n" +
+    resumo.trim() +
+    "\n</conversation_summary>"
+  );
 }
 
 // ── Flatten de agentSteps → texto (modos SEM tools) ────────
@@ -260,7 +286,8 @@ export function storeMessagesToProvider(
 ): ProviderMessage[] {
   const op: OpcoesDoHistorico = typeof opcoes === "boolean" ? { toolMode: opcoes } : opcoes;
   const toolMode = op.toolMode === true;
-  const usable = messages.filter(
+  // O que veio antes do último resumo não vai: o resumo vai no lugar.
+  const usable = messages.slice(inicioVisivel(messages)).filter(
     (m) =>
       m.type === "user" ||
       (m.type === "ai-response" && (!m.isError || (m.agentSteps?.length ?? 0) > 0))
@@ -316,7 +343,9 @@ export function storeMessagesToProvider(
         else vao.push(a);
       }
       const texto = [m.content ?? "", ...ditos].filter(Boolean).join("\n\n");
-      const content = m.contexto ? `${m.contexto}\n\n${texto}` : texto;
+      const content = [m.resumo ? blocoDoResumo(m.resumo) : "", m.contexto ?? "", texto]
+        .filter(Boolean)
+        .join("\n\n");
       out.push(vao.length > 0 ? { role: "user", content, attachments: vao } : { role: "user", content });
       return;
     }
