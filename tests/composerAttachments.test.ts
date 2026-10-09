@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { useChatStore } from "../src/store/chat";
-import { storeMessagesToProvider } from "../src/agent/conversation";
+import { montarContexto, storeMessagesToProvider } from "../src/agent/conversation";
 import { toOpenAIMessages } from "../src/providers/_shared";
 import type { ImageAttachment, NoteAttachment } from "../src/providers/base";
 
@@ -52,13 +52,13 @@ describe("anexos pendentes no store", () => {
 });
 
 describe("do store até o payload", () => {
-  it("imagem vira content part image_url na ÚLTIMA mensagem do usuário", () => {
+  it("imagem vira content part image_url na mensagem em que foi mandada", () => {
     const msgs = [
       { type: "user" as const, content: "antiga" },
       { type: "ai-response" as const, content: "resposta" },
-      { type: "user" as const, content: "olha esse print" },
+      { type: "user" as const, content: "olha esse print", anexos: [IMAGEM] },
     ];
-    const provider = storeMessagesToProvider(msgs, [IMAGEM]);
+    const provider = storeMessagesToProvider(msgs);
     const payload = toOpenAIMessages(provider) as Array<{
       role: string;
       content: unknown;
@@ -73,26 +73,22 @@ describe("do store até o payload", () => {
     expect(payload[0].content).toBe("antiga");
   });
 
-  it("nota não vira content part — ela entra como contexto de texto", () => {
-    const provider = storeMessagesToProvider(
-      [{ type: "user" as const, content: "resume" }],
-      [NOTA]
-    );
-    // o anexo viaja junto da mensagem…
-    expect(provider[0].attachments).toEqual([NOTA]);
-    // …mas o payload da OpenAI não tem parte de imagem pra ela
+  it("nota não vira content part — ela entra como contexto de texto da mensagem", () => {
+    const contexto = montarContexto({ notas: [NOTA] });
+    const provider = storeMessagesToProvider([{ type: "user" as const, content: "resume", contexto }]);
     const payload = toOpenAIMessages(provider) as Array<{ content: unknown }>;
-    expect(payload[0].content).toBe("resume");
+    expect(payload[0].content).toBe(`${contexto}\n\nresume`);
+    expect(String(payload[0].content)).toContain("<attached_notes>");
   });
 
-  it("imagem + nota juntas: a imagem vai como parte, a nota não atrapalha", () => {
-    const provider = storeMessagesToProvider(
-      [{ type: "user" as const, content: "compara" }],
-      [NOTA, IMAGEM]
-    );
+  it("imagem + nota juntas: a imagem vai como parte, a nota como texto", () => {
+    const contexto = montarContexto({ notas: [NOTA] });
+    const provider = storeMessagesToProvider([
+      { type: "user" as const, content: "compara", contexto, anexos: [IMAGEM] },
+    ]);
     const payload = toOpenAIMessages(provider) as Array<{ content: unknown }>;
     expect(payload[0].content).toEqual([
-      { type: "text", text: "compara" },
+      { type: "text", text: `${contexto}\n\ncompara` },
       { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
     ]);
   });

@@ -141,12 +141,14 @@ export const EN_US = {
       "Answer in English, clearly, directly, and helpfully. " +
       "Use Markdown when it makes sense.",
     vaultQaSuffix:
-      "\n\nThe user is in Vault Q&A mode — below are relevant notes " +
-      "extracted from their vault. Use them as the main source to answer. " +
-      "ALWAYS cite the notes you used inline, in the [[Title]] format, using " +
-      "EXACTLY the title shown in each block's ### header (the text inside " +
-      "[[ ]]). Do not invent notes that are not listed below. When an answer " +
-      "comes from a specific note, cite it right after the sentence.\n\nNotes:\n\n",
+      "\n\nNotes from the user's vault come inside their messages, in " +
+      "<vault_notes> blocks (excerpts the search found for that message) and " +
+      "<attached_notes> blocks (notes the user attached). Use them as the main " +
+      "source to answer, including notes from earlier messages. ALWAYS cite " +
+      "the notes you used inline, in the [[Title]] format, using EXACTLY the " +
+      "title shown in each block's ### header (the text inside [[ ]]). Do not " +
+      "invent notes that are not in those blocks. When an answer comes from a " +
+      "specific note, cite it right after the sentence.",
   },
 
 };

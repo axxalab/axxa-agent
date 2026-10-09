@@ -26,6 +26,31 @@ export interface ChatMessageStored {
   /** Ações de tool do agent (Agent mode) — persistidas pra continuidade de
    *  contexto ao reabrir o chat. v0.1.160 */
   agentSteps?: AIToolStep[];
+  /** Mensagem do usuário: o contexto que foi junto pro modelo (trechos do
+   *  vault + notas anexadas). Gravado pra a conversa reaberta lembrar dele. */
+  contexto?: string;
+  /** Resposta: a rodada do agente que caiu com erro (o texto é o erro; os
+   *  passos são o que ela fez antes de cair). */
+  isError?: boolean;
+}
+
+/** Uma linha que é EXATAMENTE um cabeçalho de seção do arquivo. Dentro de uma
+ *  mensagem ela vai escapada (\## You), senão ao reabrir partia a mensagem. */
+const LINHA_DE_SECAO = /^(\\*)## (You|Assistant)([^\S\r\n]*)$/gm;
+
+/** Escapa (uma barra a mais) as linhas que pareceriam cabeçalho de seção. */
+function escaparSecoes(texto: string): string {
+  return texto.replace(
+    LINHA_DE_SECAO,
+    (_, barras: string, rotulo: string, fim: string) => `\\${barras}## ${rotulo}${fim}`
+  );
+}
+
+/** Desfaz o escape (uma barra a menos) ao ler. */
+function desescaparSecoes(texto: string): string {
+  return texto.replace(LINHA_DE_SECAO, (linha: string, barras: string, rotulo: string, fim: string) =>
+    barras.length > 0 ? `${barras.slice(1)}## ${rotulo}${fim}` : linha
+  );
 }
 
 /** Argumento mais significativo de uma tool (path/from/query) pro resumo. */
@@ -204,6 +229,11 @@ function renderBody(chat: ChatData): string {
       const meta: string[] = [];
       if (m.timestamp) meta.push(`ts=${m.timestamp}`);
       if (m.reaction) meta.push(`reaction=${m.reaction}`);
+      if (m.isError) meta.push("err=1");
+      // O contexto da mensagem (vault + notas), em base64: invisível no
+      // preview, imune a "## You" lá dentro, e a versão antiga do plugin
+      // esconde a linha inteira (ignora chave que não conhece).
+      if (m.contexto) meta.push(`ctx=${b64encode(m.contexto)}`);
       const metaLine = meta.length > 0 ? `<!-- axxa: ${meta.join(" ")} -->\n` : "";
       // Ações do agent — base64 num comentário (precisão pro replay; invisível
       // no preview). O resumo legível vai no frontmatter tools_used.
@@ -211,7 +241,7 @@ function renderBody(chat: ChatData): string {
         m.agentSteps && m.agentSteps.length > 0
           ? `\n\n<!-- axxa-steps: ${b64encode(JSON.stringify(m.agentSteps))} -->`
           : "";
-      return `## ${label}\n\n${metaLine}${m.content.trim()}${stepsLine}\n`;
+      return `## ${label}\n\n${metaLine}${escaparSecoes(m.content.trim())}${stepsLine}\n`;
     })
     .join("\n");
   return `${heading}\n${sections}`;
@@ -222,6 +252,8 @@ function parseMessageMeta(content: string): {
   cleanContent: string;
   timestamp?: number;
   reaction?: "like" | "dislike" | null;
+  erro?: boolean;
+  contexto?: string;
 } {
   const match = content.match(/^\s*<!--\s*axxa:\s*([^>]+?)\s*-->\s*\n?/);
   if (!match) return { cleanContent: content };
@@ -229,14 +261,25 @@ function parseMessageMeta(content: string): {
   const cleanContent = content.slice(match[0].length);
   let timestamp: number | undefined;
   let reaction: "like" | "dislike" | null | undefined;
+  let erro: boolean | undefined;
+  let contexto: string | undefined;
   for (const part of meta.split(/\s+/)) {
-    const [k, v] = part.split("=");
+    const corte = part.indexOf("=");
+    const k = corte < 0 ? part : part.slice(0, corte);
+    const v = corte < 0 ? "" : part.slice(corte + 1);
     if (k === "ts" && v) timestamp = parseInt(v, 10);
     else if (k === "reaction" && (v === "like" || v === "dislike")) {
       reaction = v;
+    } else if (k === "err" && v === "1") erro = true;
+    else if (k === "ctx" && v) {
+      try {
+        contexto = b64decode(v);
+      } catch {
+        /* base64 estragado: a mensagem fica sem contexto, não some */
+      }
     }
   }
-  return { cleanContent, timestamp, reaction };
+  return { cleanContent, timestamp, reaction, erro, contexto };
 }
 
 // Exportadas pra teste de round-trip (integridade de dados). v0.1.149
@@ -372,21 +415,44 @@ function parseBody(body: string): ChatMessageStored[] {
       next ? next.headingStart : body.length
     );
     // Extrai metadata (timestamp + reaction) da linha HTML comment
-    const { cleanContent, timestamp, reaction } = parseMessageMeta(rawContent.trim());
+    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta } = parseMessageMeta(
+      rawContent.trim()
+    );
     // Extrai as ações do agent (comentário base64) e tira do conteúdo visível.
-    const { content: finalContent, agentSteps } = extractAgentSteps(
+    const { content: semPassos, agentSteps } = extractAgentSteps(
       cleanContent.trim()
     );
+    const { content: finalContent, contexto: ctxAntigo } =
+      cur.type === "user" ? extrairContexto(semPassos) : { content: semPassos, contexto: undefined };
+    const contexto = ctxDaMeta ?? ctxAntigo;
     messages.push({
       type: cur.type,
-      content: finalContent,
+      content: desescaparSecoes(finalContent),
       // Restaura timestamp original se salvo; fallback now()
       timestamp: timestamp ?? Date.now(),
       ...(reaction != null ? { reaction } : {}),
       ...(agentSteps ? { agentSteps } : {}),
+      ...(contexto && cur.type === "user" ? { contexto } : {}),
+      ...(erro && cur.type === "ai-response" ? { isError: true } : {}),
     });
   }
   return messages;
+}
+
+/** Extrai o contexto da mensagem (comentário base64) e tira do conteúdo. */
+function extrairContexto(content: string): { content: string; contexto?: string } {
+  // Só no FIM (onde o escritor punha): um comentário igual colado no meio do
+  // texto é texto.
+  const re = /\n*<!--\s*axxa-ctx:\s*([A-Za-z0-9+/=]+)\s*-->\s*$/;
+  const m = content.match(re);
+  if (!m || m.index === undefined) return { content };
+  try {
+    const contexto = b64decode(m[1]);
+    const limpo = (content.slice(0, m.index) + content.slice(m.index + m[0].length)).trim();
+    return { content: limpo, contexto };
+  } catch {
+    return { content };
+  }
 }
 
 export function parseChatMarkdown(content: string): ChatData {

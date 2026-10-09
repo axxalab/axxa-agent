@@ -192,7 +192,6 @@ describe("storeMessagesToProvider — cross-mode", () => {
         { type: "user", content: "faz" },
         { type: "ai-response", content: "", agentSteps: steps2 },
       ],
-      undefined,
       true
     );
     // user, assistant(tool_calls), tool, tool — sem assistant final (content vazio)
@@ -231,7 +230,6 @@ describe("continuidade cross-provider — payload wire válido", () => {
         { type: "ai-response", content: "Pronto!", agentSteps: steps2 },
         { type: "user", content: "feito, continue" },
       ],
-      undefined,
       true
     ),
   ];
@@ -248,7 +246,6 @@ describe("continuidade cross-provider — payload wire válido", () => {
         { type: "ai-response", content: "Agora vou criar os arquivos…" }, // turn 2, sem steps
         { type: "ai-response", content: "Tudo pronto.", agentSteps: steps2 }, // final
       ],
-      undefined,
       true
     ),
   ];
@@ -289,7 +286,6 @@ describe("continuidade cross-provider — payload wire válido", () => {
         { type: "user", content: "cria" },
         { type: "ai-response", content: "feito", agentSteps: foreignSteps },
       ],
-      undefined,
       true
     );
     const payload = toAnthropicPayload([{ role: "system", content: "A" }, ...hist]);

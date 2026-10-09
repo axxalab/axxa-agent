@@ -5,23 +5,23 @@
 // (src/core/session.ts). A lógica é a mesma do app antigo (useChatEngine).
 
 import { useChatStore } from "../store/chat";
+import {
+  descartarDoTurnoQueFalhou,
+  estadoDoTurno,
+  gravarContextoDoTurno,
+  oQueOModeloLe,
+} from "./contextoDoTurno";
 import type { getProvider } from "../providers";
 import { semCredencial, describeProviderError } from "./helpers";
 import { resolveEffortConfig, effortToMaxTokensSmart, isEffortLevel } from "./effort";
 import { resolveMaxTokens } from "../providers/paramPolicy";
 import { getContextWindow } from "./contextWindows";
 import {
-  blocoDeNotasAnexadas,
   buildChatSystemPrompt,
   storeMessagesToProvider,
 } from "../agent/conversation";
 import type { getTranslations } from "../i18n";
-import type {
-  MessageAttachment,
-  NoteAttachment,
-  ProviderMessage,
-  Usage,
-} from "../providers/base";
+import type { MessageAttachment, ProviderMessage, Usage } from "../providers/base";
 import type AxxaPlugin from "../main";
 import { buscarContextoDoVault } from "./vaultLookup";
 
@@ -107,6 +107,15 @@ export async function streamReply(
   // Config completo do effort atual (com overrides do usuário).
   const effortCfg = resolveEffortConfig(effort, plugin.settings.effortConfigs);
 
+  // "Respondendo" JÁ, antes da busca no vault: trocar de conversa durante a
+  // busca agora leva o turno junto pro segundo plano (com isLoading falso, o
+  // turno continuava achando que a conversa da tela era a dele).
+  setLoading(true);
+  // E o "Parar" vale desde já: com o controle nascendo só depois da busca, o
+  // botão aparecia, não parava nada, e o pedido saía (e era cobrado).
+  const controller = new AbortController();
+  abortRef.current = controller;
+
   // Notas como contexto (ver core/vaultLookup.ts). Quem decide é o
   // interruptor da conversa, não o modo.
   const vaultContextBlock = useVault
@@ -120,6 +129,13 @@ export async function streamReply(
       })
     : "";
 
+  // Pararam durante a busca: o pedido nem sai.
+  if (controller.signal.aborted) {
+    if (abortRef.current === controller) abortRef.current = null;
+    setLoading(false);
+    return;
+  }
+
   // "Pensando..." — vira done quando o primeiro token chega.
   const commentId = addMessage({
     type: "ai-comment",
@@ -132,40 +148,25 @@ export async function streamReply(
       doneText: t.ai.thinking,
     },
   });
-  setLoading(true);
-
-  const controller = new AbortController();
-  abortRef.current = controller;
 
   let responseId: string | null = null;
   let reasoningBuf = "";
 
   try {
-    // Notas anexadas viram bloco no system prompt (o LLM "vê" o conteúdo).
-    let noteContextBlock = "";
-    if (userAttachments) {
-      const noteAtts = userAttachments.filter(
-        (a): a is NoteAttachment => a.type === "note"
-      );
-      // O montador é o MESMO que o cartão de projeto usa pra contar os tokens
-      // de entrada (ver blocoDeNotasAnexadas): o número de lá é o texto daqui.
-      noteContextBlock = blocoDeNotasAnexadas(noteAtts);
-    }
+    // O contexto deste turno (trechos do vault + notas anexadas) vai NA
+    // mensagem do usuário e fica gravado nela — ver montarContexto.
+    gravarContextoDoTurno(vaultContextBlock, userAttachments);
+    const turno = estadoDoTurno();
     const fullSystem = buildChatSystemPrompt({
-      persona: useChatStore.getState().sessionPersona,
+      persona: turno.persona,
       base: t.systemPrompt.base,
-      vaultSuffix: t.systemPrompt.vaultQaSuffix,
-      vaultBlock: vaultContextBlock,
-      noteBlock: noteContextBlock,
-      instructions: useChatStore.getState().sessionInstructions,
+      vaultSuffix: useVault ? t.systemPrompt.vaultQaSuffix : undefined,
+      instructions: turno.instrucoes,
       styleInstruction: resolveStyleInstruction(),
     });
     const history: ProviderMessage[] = [
       { role: "system", content: fullSystem },
-      ...storeMessagesToProvider(
-        useChatStore.getState().messages,
-        userAttachments
-      ),
+      ...storeMessagesToProvider(turno.mensagens, oQueOModeloLe(activeProviderId, activeModel)),
     ];
 
     const apiKey = apiKeyFor(activeProviderId);
@@ -283,6 +284,7 @@ export async function streamReply(
         isError: true,
         errorCode: code,
       });
+      descartarDoTurnoQueFalhou(code, responseId === null);
     }
   } finally {
     setLoading(false);

@@ -9,6 +9,12 @@
 
 import { useChatStore, type UsoDoPedido } from "../store/chat";
 import {
+  descartarDoTurnoQueFalhou,
+  estadoDoTurno,
+  gravarContextoDoTurno,
+  oQueOModeloLe,
+} from "./contextoDoTurno";
+import {
   semCredencial,
   describeProviderError,
   agentActivitySpec,
@@ -125,6 +131,9 @@ export async function runAgentTurn(
   // core/vaultContext.ts). O agente já LÊ o vault com as ferramentas — o que
   // isto muda é ele chegar sabendo o que já está escrito, em vez de descobrir
   // procurando. É a mesma busca do turno de chat, no mesmo módulo.
+  // O "Parar" vale desde já (ver chatEngine): o controle nasce antes da busca.
+  const controller = new AbortController();
+  abortRef.current = controller;
   const vaultContextBlock = useVault
     ? await buscarContextoDoVault({
         plugin,
@@ -145,22 +154,26 @@ export async function runAgentTurn(
     ((nome === "web_search" || nome === "web_fetch") && !webLigada) ||
     (nome === "web_search" && !tavily);
 
+  // O contexto deste turno (trechos do vault + notas anexadas) vai NA
+  // mensagem do usuário e fica gravado nela. No Agent as notas anexadas não
+  // chegavam ao modelo de jeito nenhum (só imagem e PDF passavam).
+  gravarContextoDoTurno(vaultContextBlock, userAttachments);
+  const turno = estadoDoTurno();
   const history: ProviderMessage[] = [
     {
       role: "system",
       content: buildAgentSystemPrompt(
-        useChatStore.getState().sessionPersona,
+        turno.persona,
         t.agent.systemPrompt + (webLigada ? t.agent.webPrompt : ""),
-        { suffix: t.systemPrompt.vaultQaSuffix, block: vaultContextBlock },
-        useChatStore.getState().sessionInstructions
+        useVault ? t.systemPrompt.vaultQaSuffix : undefined,
+        turno.instrucoes
       ),
     },
     // toolMode=true → agentSteps são expandidos pro shape wire (replay preciso).
-    ...storeMessagesToProvider(
-      useChatStore.getState().messages,
-      userAttachments,
-      true
-    ),
+    ...storeMessagesToProvider(turno.mensagens, {
+      toolMode: true,
+      ...oQueOModeloLe(activeProviderId, activeModel),
+    }),
   ];
 
   const tools = TOOL_DEFINITIONS.filter((td) => !foraDaLista(td.name)).map((td) => ({
@@ -183,10 +196,10 @@ export async function runAgentTurn(
 
   let turn = 0;
   let firstTurn = true;
-  const controller = new AbortController();
-  abortRef.current = controller;
 
   try {
+    // Pararam durante a busca: nada sai (o finally desliga o "respondendo").
+    if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
     while (isUncapped || turn < MAX_TURNS) {
       turn++;
       // Stop entre turnos.
@@ -648,6 +661,7 @@ export async function runAgentTurn(
         errorCode: code,
       });
       if (runSteps.length > 0) setAgentSteps(errId, runSteps);
+      descartarDoTurnoQueFalhou(code, firstTurn);
     }
   } finally {
     setLoading(false);

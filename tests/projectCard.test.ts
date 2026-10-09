@@ -127,13 +127,12 @@ describe("quanto custa abrir uma conversa aqui? (tokens de entrada)", () => {
     expect(grande).toBeGreaterThan(pequena * 5);
   });
 
-  it("o bloco de notas é o MESMO de antes da extração", () => {
-    // O montador saiu de dentro do chatEngine pra ser compartilhado; o texto
-    // que vai pro modelo não pode ter mudado no caminho.
+  it("o bloco de notas é o mesmo texto que vai pro modelo", () => {
+    // O cartão conta os tokens do MESMO montador que o envio usa.
     expect(
       blocoDeNotasAnexadas([nota("A.md", "um"), nota("B.md", "dois")])
     ).toBe(
-      "\n\n[Notas anexadas pelo usuário]\n\n### A.md\n\num\n\n---\n\n### B.md\n\ndois"
+      "<attached_notes>\n### A.md\n\num\n\n---\n\n### B.md\n\ndois\n</attached_notes>"
     );
     expect(blocoDeNotasAnexadas([])).toBe("");
     expect(blocoDeInstrucoes("  Seja breve.  ")).toBe("\n\nSeja breve.");

@@ -29,6 +29,17 @@ interface BaseMessage {
 export interface UserMessage extends BaseMessage {
   type: "user";
   content: string;
+  /**
+   * O que foi junto com esta mensagem pro modelo: os trechos do vault que a
+   * busca achou e as notas anexadas, já em texto. Fica NA mensagem (e no
+   * arquivo) pra ir de novo em todo turno seguinte — antes o modelo via isso
+   * uma vez e esquecia; e, no começo do pedido, mudava a cada turno e
+   * derrubava o cache de prompt de todos os providers.
+   */
+  contexto?: string;
+  /** Imagens e PDFs desta mensagem (só na sessão: não vão pro arquivo). Vão
+   *  de novo em todo turno, no lugar onde foram mandados. */
+  anexos?: MessageAttachment[];
 }
 
 export interface AIResponseMessage extends BaseMessage {
@@ -163,6 +174,14 @@ export interface BackgroundRun {
   tokensOut: number;
   tokensCached: number;
   tokensCacheWrite: number;
+  /** O que é DA CONVERSA e vai junto com o turno: sem isto, a gravação em
+   *  segundo plano apagava do arquivo as instruções do projeto (e a persona,
+   *  a estrela, o interruptor das notas), e o turno lia as da conversa que
+   *  estivesse na tela. */
+  persona?: string;
+  instructions?: string;
+  starred?: boolean;
+  vault?: boolean;
 }
 
 /** O uso de UM pedido, como o provider contou (ver providers/base Usage). */
@@ -284,6 +303,11 @@ interface ChatState {
   setReaction: (id: string, reaction: "like" | "dislike" | null) => void;
   /** Anexa as ações de tool do agent a uma ai-response (Agent mode). */
   setAgentSteps: (id: string, steps: AIToolStep[]) => void;
+  /** Grava o contexto (vault + notas) que foi junto com uma mensagem do usuário. */
+  setContexto: (id: string, contexto: string) => void;
+  /** Tira de uma mensagem do usuário o contexto e/ou os anexos (o turno dela
+   *  falhou POR causa deles — reenviar em todo turno travava a conversa). */
+  descartarDaMensagem: (id: string, oQue: { contexto?: boolean; anexos?: boolean }) => void;
   /** Marca/desmarca uma ai-response como truncada (cortada no limite de tokens). */
   setTruncated: (id: string, truncated: boolean) => void;
   /** Inicia uma nova variante: arquiva o content atual e abre uma vazia. */
@@ -380,6 +404,17 @@ function escritaDoTurno(
   const bg = state.background;
   if (!bg) return { messages: mudar(state.messages) };
   return { background: { ...bg, messages: mudar(bg.messages) } };
+}
+
+/**
+ * As mensagens da conversa do TURNO — a que está respondendo, na tela ou em
+ * segundo plano (só existe um turno por vez). O motor LÊ daqui pelo mesmo
+ * motivo que escreve por `escritaDoTurno`: se a pessoa troca de conversa no
+ * meio (durante a busca no vault, por exemplo), ler `messages` mandava pro
+ * modelo o histórico da conversa ERRADA.
+ */
+export function mensagensDoTurno(state: Pick<ChatState, "background" | "messages">): ChatMessage[] {
+  return state.background ? state.background.messages : state.messages;
 }
 
 const BASE_RESET = {
@@ -520,6 +555,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ? { ...m, agentSteps: steps }
             : m
         )
+      )
+    ),
+  setContexto: (id, contexto) =>
+    set((state) =>
+      escritaDoTurno(state, (ms) =>
+        ms.map((m) => (m.id === id && m.type === "user" ? { ...m, contexto } : m))
+      )
+    ),
+  descartarDaMensagem: (id, oQue) =>
+    set((state) =>
+      escritaDoTurno(state, (ms) =>
+        ms.map((m) => {
+          if (m.id !== id || m.type !== "user") return m;
+          const r = { ...m };
+          if (oQue.contexto) delete r.contexto;
+          if (oQue.anexos) delete r.anexos;
+          return r;
+        })
       )
     ),
   setTruncated: (id, truncated) =>

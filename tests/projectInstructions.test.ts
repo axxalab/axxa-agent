@@ -34,30 +34,21 @@ describe("instruções de projeto no chat", () => {
     expect(buildChatSystemPrompt({ base: "BASE" })).toBe("BASE");
   });
 
-  it("a ordem inteira: head · projeto · estilo · vault · notas", () => {
+  it("a ordem inteira: head · projeto · estilo · explicação do vault", () => {
     const r = buildChatSystemPrompt({
       base: "BASE",
       instructions: "P",
       styleInstruction: "S",
-      vaultSuffix: "\n\nV:\n",
-      vaultBlock: "ctx",
-      noteBlock: "\n\nN",
+      vaultSuffix: "\n\nV",
     });
-    expect(r).toBe("BASE\n\nP\n\nS\n\nV:\nctx\n\nN");
+    expect(r).toBe("BASE\n\nP\n\nS\n\nV");
   });
 });
 
 describe("instruções de projeto no agente", () => {
-  it("vêm depois do prompt do agente e antes das notas", () => {
-    // Antes das notas porque o bloco de notas é DADO; instrução é regra, e
-    // regra lida depois do dado chega tarde.
-    const r = buildAgentSystemPrompt(
-      undefined,
-      "AGENTE",
-      { suffix: "\n\nNOTAS:\n", block: "ctx" },
-      "Nunca apague nada."
-    );
-    expect(r).toBe("AGENTE\n\nNunca apague nada.\n\nNOTAS:\nctx");
+  it("vêm depois do prompt do agente e antes da explicação das notas", () => {
+    const r = buildAgentSystemPrompt(undefined, "AGENTE", "\n\nNOTAS", "Nunca apague nada.");
+    expect(r).toBe("AGENTE\n\nNunca apague nada.\n\nNOTAS");
   });
 
   it("não atropela a persona, que continua na frente", () => {

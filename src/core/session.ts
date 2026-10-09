@@ -19,12 +19,7 @@
 
 import { Notice, TFile } from "obsidian";
 import type AxxaPlugin from "../main";
-import {
-  useChatStore,
-  type AIResponseMessage,
-  type ChatMessage,
-  type UserMessage,
-} from "../store/chat";
+import { useChatStore, type ChatMessage } from "../store/chat";
 import { getProvider } from "../providers";
 import { modeloSalvoPara } from "./modeloPadrao";
 import { nomeCompleto } from "./ollamaPadrao";
@@ -37,6 +32,7 @@ import {
   renameChat,
   generateTitle,
   type ChatData,
+  type ChatMessageStored,
 } from "./chatPersistence";
 import { makeId, semCredencial } from "./helpers";
 import { streamReply, type EngineCtx } from "./chatEngine";
@@ -68,6 +64,43 @@ export interface SessionConfig {
 export interface ChatRef {
   id: string;
   mode: string;
+}
+
+/**
+ * O que de uma conversa vai pro arquivo. Um lugar só — o save normal e o do
+ * turno em segundo plano usavam cópias, e as cópias divergem.
+ *   · mensagens do usuário (com o contexto que foi junto: vault + notas) e
+ *     respostas;
+ *   · resposta de ERRO fica de fora — menos a de uma rodada do agente que
+ *     fez coisas: ela vai, com o texto do erro e a marca (volta como erro ao
+ *     reabrir), senão a conversa reaberta esquecia as notas que o agente já
+ *     tinha criado ou editado. Pro modelo, o texto do erro não vai (ver
+ *     storeMessagesToProvider).
+ */
+export function mensagensParaGravar(msgs: readonly ChatMessage[]): ChatMessageStored[] {
+  const out: ChatMessageStored[] = [];
+  for (const m of msgs) {
+    if (m.type === "user") {
+      out.push({
+        type: "user",
+        content: m.content,
+        timestamp: m.timestamp,
+        ...(m.contexto ? { contexto: m.contexto } : {}),
+      });
+    } else if (m.type === "ai-response") {
+      const passos = m.agentSteps && m.agentSteps.length > 0 ? m.agentSteps : undefined;
+      if (m.isError && !passos) continue;
+      out.push({
+        type: "ai-response",
+        content: m.content,
+        timestamp: m.timestamp,
+        ...(m.isError ? { isError: true } : {}),
+        ...(m.reaction ? { reaction: m.reaction } : {}),
+        ...(passos ? { agentSteps: passos } : {}),
+      });
+    }
+  }
+  return out;
 }
 
 export class ChatSession {
@@ -354,7 +387,15 @@ export class ChatSession {
     const attachments = pendentes.length > 0 ? [...pendentes] : undefined;
     if (pendentes.length > 0) st.setAttachments([]);
 
-    st.addMessage({ type: "user", content: trimmed });
+    // Imagem e PDF ficam NA mensagem (e vão de novo em todo turno, no lugar
+    // onde foram mandados); as notas viram o contexto dela no motor (ver
+    // contextoDoTurno).
+    const midia = (attachments ?? []).filter((a) => a.type !== "note");
+    st.addMessage(
+      midia.length > 0
+        ? { type: "user", content: trimmed, anexos: midia }
+        : { type: "user", content: trimmed }
+    );
     // Carimba de quem é este turno ANTES de começar. É por este id que a tela
     // sabe se quem está respondendo é a conversa que ela mostra, e é ele que
     // vai junto se a conversa sair de cena no meio.
@@ -444,23 +485,36 @@ export class ChatSession {
       tokensOut: st.tokensOut,
       tokensCached: st.tokensCached,
       tokensCacheWrite: st.tokensCacheWrite,
+      persona: st.sessionPersona || undefined,
+      instructions: st.sessionInstructions || undefined,
+      starred: st.currentChatStarred || undefined,
+      vault: this.vaultEscolha ?? undefined,
     });
     return true;
   }
 
   /** Grava o arquivo da conversa que respondeu fora da tela e a esquece. */
+  /** O que a conversa tem gravado agora (null: ainda não tem arquivo). */
+  private async lerDoArquivo(id: string, mode: string): Promise<ChatData | null> {
+    try {
+      return await loadChat(this.plugin.app, this.plugin.settings.chatsPath, mode, id);
+    } catch {
+      return null;
+    }
+  }
+
   private async gravarFundo(): Promise<void> {
     const st = useChatStore.getState();
     const run = st.background;
     if (!run) return;
     st.clearBackground();
-    // Mesmo filtro do save normal: só user e ai-response que não é erro. O
-    // `as` é o que diz ao compilador o que o filtro já garantiu — ai-options
-    // não tem `content` e não passa por aqui.
-    const guardadas = run.messages.filter(
-      (m) => m.type === "user" || (m.type === "ai-response" && !m.isError)
-    ) as Array<Extract<ChatMessage, { content: string }>>;
+    // Mesmo filtro e mapa do save normal (ver mensagensParaGravar).
+    const guardadas = mensagensParaGravar(run.messages);
     if (guardadas.length === 0) return;
+    // Enquanto o turno rodava fora da tela, a lista pode ter mudado a estrela
+    // ou as instruções DESTA conversa — e isso foi pro arquivo. O retrato do
+    // turno é de antes: gravar por cima apagava a mudança. O arquivo vale.
+    const noArquivo = await this.lerDoArquivo(run.chatId, run.mode);
     const chat: ChatData = {
       id: run.chatId,
       title: run.title || generateTitle(guardadas[0].content),
@@ -473,17 +527,11 @@ export class ChatSession {
       tokensOut: run.tokensOut,
       tokensCached: run.tokensCached,
       tokensCacheWrite: run.tokensCacheWrite,
-      messages: guardadas.map((m) => ({
-        type: m.type as "user" | "ai-response",
-        content: m.content,
-        timestamp: m.timestamp,
-        ...(m.type === "ai-response" && m.reaction
-          ? { reaction: m.reaction }
-          : {}),
-        ...(m.type === "ai-response" && m.agentSteps
-          ? { agentSteps: m.agentSteps }
-          : {}),
-      })),
+      persona: noArquivo ? noArquivo.persona : run.persona,
+      instructions: noArquivo ? noArquivo.instructions : run.instructions,
+      starred: noArquivo ? noArquivo.starred : run.starred,
+      vault: run.vault,
+      messages: guardadas,
     };
     const ultima = chat.messages[chat.messages.length - 1];
     try {
@@ -510,7 +558,7 @@ export class ChatSession {
           0
         ),
         filePath: path,
-        starred: false,
+        starred: chat.starred === true,
         // Da última fala que já está aqui: reler do disco o arquivo que
         // acabamos de escrever seria trabalho por nada, e deixar vazio
         // APAGARIA a linha do cartão a cada gravação.
@@ -544,6 +592,10 @@ export class ChatSession {
     st.lockSession(run.provider, run.model, run.mode);
     st.resetUsage();
     st.restaurarUso(run);
+    st.setSessionPersona(run.persona ?? "");
+    st.setSessionInstructions(run.instructions ?? "");
+    st.setCurrentChatStarred(run.starred === true);
+    this.vaultEscolha = run.vault ?? null;
     if (run.effort) this.effort = run.effort;
     // Volta exatamente onde a leitura parou: o que chegou enquanto você não
     // estava olhando fica logo abaixo, em vez de você cair no fim e ter que
@@ -636,6 +688,8 @@ export class ChatSession {
         ...(m.type === "ai-response" && m.agentSteps
           ? { agentSteps: m.agentSteps }
           : {}),
+        ...(m.type === "user" && m.contexto ? { contexto: m.contexto } : {}),
+        ...(m.type === "ai-response" && m.isError ? { isError: true } : {}),
       }));
 
       const st = useChatStore.getState();
@@ -793,10 +847,7 @@ export class ChatSession {
   private async saveNow(): Promise<void> {
     const st = useChatStore.getState();
     if (!st.currentChatId) return;
-    const userOrAi = st.messages.filter(
-      (m): m is UserMessage | AIResponseMessage =>
-        m.type === "user" || (m.type === "ai-response" && !m.isError)
-    );
+    const userOrAi = mensagensParaGravar(st.messages);
     if (userOrAi.length === 0) return;
     const cfg = this.config;
     const chat: ChatData = {
@@ -818,17 +869,7 @@ export class ChatSession {
       // conversa reabrir com o interruptor travado em desligado, mesmo num
       // modo cujo padrão é ligado.
       vault: this.vaultEscolha ?? undefined,
-      messages: userOrAi.map((m) => ({
-        type: m.type,
-        content: m.content,
-        timestamp: m.timestamp,
-        ...(m.type === "ai-response" && m.reaction
-          ? { reaction: m.reaction }
-          : {}),
-        ...(m.type === "ai-response" && m.agentSteps?.length
-          ? { agentSteps: m.agentSteps }
-          : {}),
-      })),
+      messages: userOrAi,
     };
     const ultima = chat.messages[chat.messages.length - 1];
     try {

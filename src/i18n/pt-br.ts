@@ -123,12 +123,14 @@ export const PT_BR: Translations = {
       "forma útil. " +
       "Use Markdown quando fizer sentido.",
     vaultQaSuffix:
-      "\n\nO usuário está no modo Vault Q&A — abaixo estão notas relevantes " +
-      "extraídas do vault dele. Use-as como fonte principal da resposta. " +
-      "CITE SEMPRE as notas que usou ao longo do texto, no formato [[Título]], " +
-      "usando EXATAMENTE o título mostrado no cabeçalho ### de cada bloco (o " +
-      "texto dentro de [[ ]]). Não invente notas que não estão listadas " +
-      "abaixo. Quando uma resposta vier de uma nota específica, cite logo " +
-      "depois da frase.\n\nNotas:\n\n",
+      "\n\nAs notas do vault do usuário chegam dentro das mensagens dele, em " +
+      "blocos <vault_notes> (trechos que a busca achou pra aquela mensagem) e " +
+      "<attached_notes> (notas que ele anexou). Use-as como fonte principal " +
+      "da resposta, inclusive as de mensagens anteriores. CITE SEMPRE as " +
+      "notas que usou ao longo do texto, no formato [[Título]], usando " +
+      "EXATAMENTE o título mostrado no cabeçalho ### de cada bloco (o texto " +
+      "dentro de [[ ]]). Não invente notas que não estão nesses blocos. " +
+      "Quando uma resposta vier de uma nota específica, cite logo depois da " +
+      "frase.",
   },
 };
