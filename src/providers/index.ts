@@ -10,6 +10,7 @@ import { openrouterProvider } from "./openrouter";
 import { nimProvider } from "./nim";
 import { ollamaProvider } from "./ollama";
 import { anotarUso, conferirGasto } from "../usage/anotador";
+import type { Lancamento } from "../usage/livroDoDia";
 
 export const providers: Record<string, Provider> = {
   openai: openaiProvider,
@@ -40,7 +41,7 @@ function comRegistro(p: Provider): Provider {
     // O limite de gasto do dia barra ANTES de sair (ver usage/gastoDoDia.ts).
     conferirGasto(p.id, req.model);
     const res = await p.chat(req, apiKey);
-    anotarUso(p.id, req.model, { r: 1, i: res.usage?.input ?? 0, o: res.usage?.output ?? 0 });
+    anotarUso(p.id, req.model, lancamentoDe(res.usage));
     return res;
   };
   w.streamChat = async (req, apiKey, onToken, onUsage, signal, onReasoning) => {
@@ -71,12 +72,19 @@ function comRegistro(p: Provider): Provider {
       ultimo ??= res.usage ?? null;
       return res;
     } finally {
-      if (aceito) {
-        anotarUso(p.id, req.model, { r: 1, i: ultimo?.input ?? 0, o: ultimo?.output ?? 0 });
-      }
+      if (aceito) anotarUso(p.id, req.model, lancamentoDe(ultimo ?? undefined));
     }
   };
   return w;
+}
+
+/** Um pedido aceito no formato do livro: entrada (toda), saída e, quando o
+ *  provider contou, o que veio do cache e o que foi gravado nele. */
+function lancamentoDe(u: Usage | undefined): Partial<Lancamento> {
+  const l: Partial<Lancamento> = { r: 1, i: u?.input ?? 0, o: u?.output ?? 0 };
+  if (u?.cacheRead) l.c = u.cacheRead;
+  if (u?.cacheWrite) l.w = u.cacheWrite;
+  return l;
 }
 
 /** Um embrulho por OBJETO de provider (não por id): trocar o objeto — um

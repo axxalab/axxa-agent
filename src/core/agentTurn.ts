@@ -7,7 +7,7 @@
 // nesta base (o fluxo de geração de imagem saiu com a casca antiga); se o
 // modelo insistir, recebe um resultado explicando que não está disponível.
 
-import { useChatStore } from "../store/chat";
+import { useChatStore, type UsoDoPedido } from "../store/chat";
 import {
   semCredencial,
   describeProviderError,
@@ -210,24 +210,36 @@ export async function runAgentTurn(
       };
 
       startStreamTimer();
-      const response = await activeProvider.streamChat(
-        {
-          model: activeModel,
-          messages: history,
-          maxTokens: effortToMaxTokensSmart(
-            effort,
-            getContextWindow(activeModel),
-            plugin.settings.effortConfigs
-          ),
-          temperature: effortCfg.temperature,
-          effort: isEffortLevel(effort) ? effort : undefined,
-          tools,
-        },
-        apiKey,
-        onToken,
-        (usage) => addUsage(usage.input, usage.output),
-        controller.signal
-      );
+      // O uso de cada pedido entra UMA vez, no fim (ver chatEngine: há
+      // provider que manda o uso em todo pedaço do stream).
+      let ultimoUso: UsoDoPedido | null = null;
+      const donoDoPedido =
+        useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+      let response;
+      try {
+        response = await activeProvider.streamChat(
+          {
+            model: activeModel,
+            messages: history,
+            maxTokens: effortToMaxTokensSmart(
+              effort,
+              getContextWindow(activeModel),
+              plugin.settings.effortConfigs
+            ),
+            temperature: effortCfg.temperature,
+            effort: isEffortLevel(effort) ? effort : undefined,
+            tools,
+          },
+          apiKey,
+          onToken,
+          (usage) => {
+            ultimoUso = usage;
+          },
+          controller.signal
+        );
+      } finally {
+        if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
+      }
       endStreamTimer();
       setStreamingMessageId(null);
 

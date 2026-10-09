@@ -26,6 +26,7 @@ import {
   ProviderMessage,
   ProviderToolCall,
   TokenHandler,
+  Usage,
   UsageHandler,
   ReasoningHandler,
 } from "./base";
@@ -126,6 +127,25 @@ interface BlocoDaResposta {
 interface UsoAnthropic {
   input_tokens?: number;
   output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+/**
+ * O usage da Anthropic no formato do app. Na Anthropic, `input_tokens` é só o
+ * que NÃO veio do cache: o prompt inteiro é ele + o lido + o gravado. Sem
+ * somar, com o cache ligado, o painel e o teto de gasto contariam só a ponta.
+ */
+function usoDaAnthropic(u: UsoAnthropic | undefined, saida = 0): Usage {
+  const lido = u?.cache_read_input_tokens ?? 0;
+  const gravado = u?.cache_creation_input_tokens ?? 0;
+  const usage: Usage = {
+    input: (u?.input_tokens ?? 0) + lido + gravado,
+    output: u?.output_tokens ?? saida,
+  };
+  if (u?.cache_read_input_tokens !== undefined) usage.cacheRead = lido;
+  if (gravado > 0) usage.cacheWrite = gravado;
+  return usage;
 }
 
 /** Resposta non-stream (requestUrl). */
@@ -412,13 +432,7 @@ export class AnthropicProvider implements Provider {
     if (toolCalls.length > 0) result.toolCalls = toolCalls;
 
     // Usage tokens
-    const usage = corpo?.usage;
-    if (usage) {
-      result.usage = {
-        input: usage.input_tokens ?? 0,
-        output: usage.output_tokens ?? 0,
-      };
-    }
+    if (corpo?.usage) result.usage = usoDaAnthropic(corpo.usage);
 
     return result;
   }
@@ -475,8 +489,13 @@ export class AnthropicProvider implements Provider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let inputTokens = 0;
+    // O input chega no message_start (com os campos de cache); o
+    // message_delta pode trazer os totais corridos de novo. A saída vem no
+    // delta e, em alguns formatos, só no stop.
+    const entrada: UsoAnthropic = {};
     let outputTokens = 0;
+    const usoAgora = (): Usage => usoDaAnthropic({ ...entrada, output_tokens: outputTokens });
+    const temUso = () => (entrada.input_tokens ?? 0) > 0 || outputTokens > 0;
     let accumulatedText = "";
     // Tool use accumulator por content_block_index
     const toolUseAccum: Record<number, { id: string; name: string; jsonBuf: string }> = {};
@@ -535,9 +554,15 @@ export class AnthropicProvider implements Provider {
               }
             }
           } else if (json.type === "message_start") {
-            inputTokens = json.message?.usage?.input_tokens ?? 0;
+            Object.assign(entrada, campoDeEntrada(json.message?.usage));
+            // Avisa JÁ: o prompt (e o cache) foi cobrado a partir daqui, e um
+            // Stop ou erro no meio do stream não chega ao message_stop. Quem
+            // ouve guarda só o último aviso — avisar de novo não soma.
+            if (onUsage && temUso()) onUsage(usoAgora());
           } else if (json.type === "message_delta") {
             outputTokens = json.usage?.output_tokens ?? outputTokens;
+            Object.assign(entrada, campoDeEntrada(json.usage));
+            if (onUsage && temUso()) onUsage(usoAgora());
           } else if (json.type === "message_stop") {
             // Alguns shapes só trazem o usage final aqui (não no message_delta)
             // → lê o fallback e mantém o MAIOR visto pra não zerar. v0.1.228
@@ -546,12 +571,11 @@ export class AnthropicProvider implements Provider {
               json.usage?.output_tokens ??
               0;
             if (stopOut > outputTokens) outputTokens = stopOut;
-            if (onUsage) onUsage({ input: inputTokens, output: outputTokens });
+            if (onUsage) onUsage(usoAgora());
             return buildAnthropicStreamResponse(
               accumulatedText,
               toolUseAccum,
-              inputTokens,
-              outputTokens
+              temUso() ? usoAgora() : undefined
             );
           } else if (json.type === "error") {
             throw new ProviderError(
@@ -578,14 +602,11 @@ export class AnthropicProvider implements Provider {
     }
 
     // Stream encerrou sem message_stop — dispara usage com o que temos
-    if (onUsage && (inputTokens > 0 || outputTokens > 0)) {
-      onUsage({ input: inputTokens, output: outputTokens });
-    }
+    if (onUsage && temUso()) onUsage(usoAgora());
     return buildAnthropicStreamResponse(
       accumulatedText,
       toolUseAccum,
-      inputTokens,
-      outputTokens
+      temUso() ? usoAgora() : undefined
     );
   }
 
@@ -638,8 +659,7 @@ export class AnthropicProvider implements Provider {
 function buildAnthropicStreamResponse(
   text: string,
   toolUseAccum: Record<number, { id: string; name: string; jsonBuf: string }>,
-  inputTokens: number,
-  outputTokens: number
+  usage: Usage | undefined
 ): ProviderResponse {
   const indices = Object.keys(toolUseAccum)
     .map((k) => Number(k))
@@ -667,10 +687,20 @@ function buildAnthropicStreamResponse(
   }
   const result: ProviderResponse = { content: text };
   if (toolCalls.length > 0) result.toolCalls = toolCalls;
-  if (inputTokens > 0 || outputTokens > 0) {
-    result.usage = { input: inputTokens, output: outputTokens };
-  }
+  if (usage) result.usage = usage;
   return result;
+}
+
+/** Só os campos de ENTRADA de um usage (o message_delta repete os totais
+ *  corridos; os que não vieram não apagam os do message_start). */
+function campoDeEntrada(u: UsoAnthropic | undefined): UsoAnthropic {
+  const r: UsoAnthropic = {};
+  if (typeof u?.input_tokens === "number") r.input_tokens = u.input_tokens;
+  if (typeof u?.cache_read_input_tokens === "number") r.cache_read_input_tokens = u.cache_read_input_tokens;
+  if (typeof u?.cache_creation_input_tokens === "number") {
+    r.cache_creation_input_tokens = u.cache_creation_input_tokens;
+  }
+  return r;
 }
 
 export const anthropicProvider = new AnthropicProvider();

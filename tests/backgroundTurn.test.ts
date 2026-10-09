@@ -103,7 +103,7 @@ describe("escrita do turno com a conversa FORA da tela", () => {
   });
 
   it("os tokens entram na conta de quem gastou", () => {
-    useChatStore.getState().addUsage(120, 340);
+    useChatStore.getState().addUsage({ input: 120, output: 340 });
     const s = useChatStore.getState();
     expect(s.tokensIn).toBe(0);
     expect(s.tokensOut).toBe(0);

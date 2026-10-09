@@ -14,8 +14,24 @@
 /** O que uma hora de um modelo gastou: pedidos, tokens de entrada e saída. */
 export interface Lancamento {
   r: number;
+  /** Toda a entrada — inclusive o que veio do cache. */
   i: number;
   o: number;
+  /** Da entrada, o que o provider leu do cache de prompt (cobra menos). Só
+   *  aparece quando houve: livros antigos não têm, e ausente é 0. */
+  c?: number;
+  /** Da entrada, o que foi gravado no cache (Anthropic e GPT-5.6+ cobram
+   *  mais por isso). */
+  w?: number;
+}
+
+/** Soma `l` em `acc`, com os campos de cache só quando há o que somar. */
+function somarEm(acc: Lancamento, l: Partial<Lancamento>): void {
+  acc.r += l.r ?? 0;
+  acc.i += l.i ?? 0;
+  acc.o += l.o ?? 0;
+  if (l.c) acc.c = (acc.c ?? 0) + l.c;
+  if (l.w) acc.w = (acc.w ?? 0) + l.w;
 }
 
 /** Hora UTC ("2026-10-02T14") → "provider\u0001modelo" → o lançamento. */
@@ -38,10 +54,7 @@ export function lancar(
 ): void {
   const hora = (livro[horaDe(quando)] ??= {});
   const chave = `${provider}${SEP}${model}`;
-  const l = (hora[chave] ??= { r: 0, i: 0, o: 0 });
-  l.r += delta.r ?? 0;
-  l.i += delta.i ?? 0;
-  l.o += delta.o ?? 0;
+  somarEm((hora[chave] ??= { r: 0, i: 0, o: 0 }), delta);
 }
 
 /** Joga fora o que passou de `horas` atrás — o livro nunca cresce. */
@@ -119,9 +132,7 @@ export function somarDesde(
       const provider = chave.slice(0, corte);
       const model = chave.slice(corte + 1);
       if (!filtro(provider, model)) continue;
-      total.r += l.r;
-      total.i += l.i;
-      total.o += l.o;
+      somarEm(total, l);
     }
   }
   return total;
@@ -143,9 +154,7 @@ export function modelosDesde(
       if (chave.slice(0, corte) !== provider) continue;
       const model = chave.slice(corte + 1);
       const acc = porModelo.get(model) ?? { r: 0, i: 0, o: 0 };
-      acc.r += l.r;
-      acc.i += l.i;
-      acc.o += l.o;
+      somarEm(acc, l);
       porModelo.set(model, acc);
     }
   }

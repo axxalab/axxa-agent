@@ -48,7 +48,7 @@ import {
   revisarOllamaPadrao,
 } from "./core/ollamaPadrao";
 import { definirGratisConhecidos } from "./usage/pricing";
-import { lancar, podar, type LivroDoDia } from "./usage/livroDoDia";
+import { lancar, podar, type Lancamento, type LivroDoDia } from "./usage/livroDoDia";
 import { definirAnotadorDeUso, definirGuardaDeGasto } from "./usage/anotador";
 import { ehPago, gastoDeHoje, marcosCruzados, usd } from "./usage/gastoDoDia";
 import { ProviderError } from "./providers/base";
@@ -1193,7 +1193,7 @@ export default class AxxaPlugin extends Plugin {
   }
 
   /** Soma um pedido (ou os tokens dele) no livro do dia e agenda a gravação. */
-  anotarUso(provider: string, model: string, delta: { r?: number; i?: number; o?: number }): void {
+  anotarUso(provider: string, model: string, delta: Partial<Lancamento>): void {
     const agora = new Date();
     const livro = (this.settings.usoDoDia ??= {});
     const limite = this.settings.limiteGastoDiario ?? 0;

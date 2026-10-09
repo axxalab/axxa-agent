@@ -13,6 +13,8 @@ export interface UsageBucket {
   chats: number;
   tokensIn: number;
   tokensOut: number;
+  /** Do tokensIn, quanto veio do cache de prompt. */
+  tokensCached: number;
   cost: number; // USD, 0 se tudo free
   /** true se algum chat dentro do bucket tem modelo sem pricing conhecido */
   hasUnknownCost: boolean;
@@ -30,6 +32,7 @@ export interface ChatUsageRow {
   mode: string;
   tokensIn: number;
   tokensOut: number;
+  tokensCached: number;
   cost: number | null; // null = pricing unknown
   messages: number;
   filePath: string;
@@ -55,6 +58,7 @@ function emptyBucket(): UsageBucket {
     chats: 0,
     tokensIn: 0,
     tokensOut: 0,
+    tokensCached: 0,
     cost: 0,
     hasUnknownCost: false,
   };
@@ -73,6 +77,7 @@ function bump(bucket: UsageBucket, row: ChatUsageRow): void {
   bucket.chats += 1;
   bucket.tokensIn += row.tokensIn;
   bucket.tokensOut += row.tokensOut;
+  bucket.tokensCached += row.tokensCached;
   if (row.cost == null) {
     bucket.hasUnknownCost = true;
   } else {
@@ -101,7 +106,12 @@ function summaryToRow(s: ChatSummary, pricingCache?: Map<string, ModelPricing>):
   // NaN/undefined, que envenenaria todos os totais via bump() (v0.1.228).
   const tokensIn = Number.isFinite(s.tokensIn) ? s.tokensIn : 0;
   const tokensOut = Number.isFinite(s.tokensOut) ? s.tokensOut : 0;
-  const cost = calculateCost(pricing, tokensIn, tokensOut);
+  const tokensCached = Number.isFinite(s.tokensCached) ? (s.tokensCached ?? 0) : 0;
+  const gravado = Number.isFinite(s.tokensCacheWrite) ? (s.tokensCacheWrite ?? 0) : 0;
+  const cost = calculateCost(pricing, tokensIn, tokensOut, 0, 0, {
+    lido: tokensCached,
+    gravado,
+  });
   return {
     id: s.id,
     title: s.title,
@@ -112,6 +122,7 @@ function summaryToRow(s: ChatSummary, pricingCache?: Map<string, ModelPricing>):
     mode: s.mode,
     tokensIn,
     tokensOut,
+    tokensCached,
     cost,
     messages: s.messageCount,
     filePath: s.filePath,

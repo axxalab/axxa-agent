@@ -28,6 +28,7 @@ import {
   ProviderResponse,
   ProviderToolCall,
   TokenHandler,
+  Usage,
   UsageHandler,
   ReasoningHandler,
 } from "./base";
@@ -59,6 +60,16 @@ interface RespostaOllama {
   error?: unknown;
   prompt_eval_count?: number;
   eval_count?: number;
+  /** Do prompt, quanto o Ollama reaproveitou do cache KV (0.33.3+). O
+   *  prompt_eval_count já inclui isso. */
+  prompt_eval_cached_count?: number;
+}
+
+/** O usage do Ollama no formato do app (o lido do cache vem junto, quando vem). */
+function usoDoOllama(r: RespostaOllama): Usage {
+  const usage: Usage = { input: r.prompt_eval_count ?? 0, output: r.eval_count ?? 0 };
+  if (typeof r.prompt_eval_cached_count === "number") usage.cacheRead = r.prompt_eval_cached_count;
+  return usage;
 }
 
 interface CatalogoOllama {
@@ -372,10 +383,7 @@ export class OllamaProvider implements Provider {
     if (toolCalls) result.toolCalls = toolCalls;
     // Usage tokens (vem no response não-streaming também)
     if (corpo?.prompt_eval_count !== undefined || corpo?.eval_count !== undefined) {
-      result.usage = {
-        input: corpo.prompt_eval_count ?? 0,
-        output: corpo.eval_count ?? 0,
-      };
+      result.usage = usoDoOllama(corpo);
     }
     return result;
   }
@@ -419,7 +427,7 @@ export class OllamaProvider implements Provider {
     const decoder = new TextDecoder();
     let buffer = "";
     let accumulatedText = "";
-    let usage: { input: number; output: number } | undefined;
+    let usage: Usage | undefined;
     // v0.1.228: Ollama emite o bloco INTEIRO de tool_calls (não deltas) e pode
     // reenviar o array em mais de uma linha — guardamos só o último recebido em
     // vez de concatenar, evitando tool calls duplicados.
@@ -466,10 +474,7 @@ export class OllamaProvider implements Provider {
           const parsed = toolCallsDoOllama(message?.tool_calls);
           if (parsed.length > 0) lastToolCalls = parsed;
           if (json?.done === true) {
-            usage = {
-              input: json.prompt_eval_count ?? 0,
-              output: json.eval_count ?? 0,
-            };
+            usage = usoDoOllama(json);
             if (onUsage) onUsage(usage);
             const result: ProviderResponse = { content: accumulatedText };
             if (lastToolCalls.length > 0) result.toolCalls = lastToolCalls;

@@ -161,6 +161,16 @@ export interface BackgroundRun {
   messages: ChatMessage[];
   tokensIn: number;
   tokensOut: number;
+  tokensCached: number;
+  tokensCacheWrite: number;
+}
+
+/** O uso de UM pedido, como o provider contou (ver providers/base Usage). */
+export interface UsoDoPedido {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
 }
 
 interface ChatState {
@@ -172,6 +182,9 @@ interface ChatState {
   /** Tokens acumulados da sessão atual (in = prompt, out = completion). */
   tokensIn: number;
   tokensOut: number;
+  /** Do tokensIn, quanto veio do cache de prompt / foi gravado nele. */
+  tokensCached: number;
+  tokensCacheWrite: number;
   /** Última snapshot de prompt_tokens (usado pra estimar "contexto usado") */
   lastPromptTokens: number;
   /** Id da mensagem que tá sendo streamada agora (pra esconder footer durante stream). */
@@ -297,7 +310,19 @@ interface ChatState {
   /** Descarta o turno de fundo — já salvo, ou a conversa foi apagada. */
   clearBackground: () => void;
   setLoadingChat: (loading: boolean) => void;
-  addUsage: (input: number, output: number) => void;
+  /** Soma o uso de UM pedido terminado (uma vez por pedido — ver chatEngine).
+   *  `dono` = a conversa do pedido: o uso vai pra ela, esteja na tela ou em
+   *  segundo plano; se ela não está em nenhum dos dois (o painel fechou no
+   *  meio), não vai pra conversa de ninguém — o livro do dia já contou. */
+  addUsage: (uso: UsoDoPedido, dono?: string | null) => void;
+  /** Põe os totais de uma conversa reaberta (não é um pedido: o "último
+   *  prompt" fica como está). */
+  restaurarUso: (totais: {
+    tokensIn: number;
+    tokensOut: number;
+    tokensCached?: number;
+    tokensCacheWrite?: number;
+  }) => void;
   resetUsage: () => void;
   setStreamingMessageId: (id: string | null) => void;
   /** Marca início do stream (reset de tokensPerSec + start time). */
@@ -364,6 +389,8 @@ const BASE_RESET = {
   isLoading: false,
   tokensIn: 0,
   tokensOut: 0,
+  tokensCached: 0,
+  tokensCacheWrite: 0,
   lastPromptTokens: 0,
   streamingMessageId: null as string | null,
   sessionProvider: null as string | null,
@@ -385,6 +412,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingChat: false,
   tokensIn: 0,
   tokensOut: 0,
+  tokensCached: 0,
+  tokensCacheWrite: 0,
   lastPromptTokens: 0,
   streamingMessageId: null,
   streamStartedAt: null,
@@ -609,25 +638,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setLoadingChat: (loading) => set({ loadingChat: loading }),
   // Os tokens são do turno, então seguem o turno: com a conversa fora da tela
   // eles iam parar na conta da conversa que estivesse aberta.
-  addUsage: (input, output) =>
+  addUsage: (uso, dono) =>
     set((state) => {
+      const lido = uso.cacheRead ?? 0;
+      const gravado = uso.cacheWrite ?? 0;
       const bg = state.background;
-      if (bg) {
+      const conhecido = typeof dono === "string" && dono !== "";
+      const praFundo = bg && (!conhecido || bg.chatId === dono);
+      if (
+        !praFundo &&
+        conhecido &&
+        state.currentChatId !== dono &&
+        state.turnChatId !== dono
+      ) {
+        return {};
+      }
+      if (praFundo && bg) {
         return {
           background: {
             ...bg,
-            tokensIn: bg.tokensIn + input,
-            tokensOut: bg.tokensOut + output,
+            tokensIn: bg.tokensIn + uso.input,
+            tokensOut: bg.tokensOut + uso.output,
+            tokensCached: (bg.tokensCached ?? 0) + lido,
+            tokensCacheWrite: (bg.tokensCacheWrite ?? 0) + gravado,
           },
         };
       }
       return {
-        tokensIn: state.tokensIn + input,
-        tokensOut: state.tokensOut + output,
-        lastPromptTokens: input > 0 ? input : state.lastPromptTokens,
+        tokensIn: state.tokensIn + uso.input,
+        tokensOut: state.tokensOut + uso.output,
+        tokensCached: state.tokensCached + lido,
+        tokensCacheWrite: state.tokensCacheWrite + gravado,
+        lastPromptTokens: uso.input > 0 ? uso.input : state.lastPromptTokens,
       };
     }),
-  resetUsage: () => set({ tokensIn: 0, tokensOut: 0, lastPromptTokens: 0 }),
+  restaurarUso: (t) =>
+    set({
+      tokensIn: t.tokensIn,
+      tokensOut: t.tokensOut,
+      tokensCached: t.tokensCached ?? 0,
+      tokensCacheWrite: t.tokensCacheWrite ?? 0,
+    }),
+  resetUsage: () =>
+    set({ tokensIn: 0, tokensOut: 0, tokensCached: 0, tokensCacheWrite: 0, lastPromptTokens: 0 }),
   setStreamingMessageId: (id) => set({ streamingMessageId: id }),
   startStreamTimer: () =>
     set({ streamStartedAt: Date.now(), streamTokens: 0, tokensPerSec: 0 }),

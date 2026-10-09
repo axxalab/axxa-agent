@@ -20,6 +20,11 @@ import { horaDe, inicioDoDia, type LivroDoDia } from "./livroDoDia";
 export interface Preco {
   entrada: number;
   saida: number;
+  /** A entrada lida do cache. Sem preço publicado, vale a entrada cheia — no
+   *  orçamento, contar a mais é o erro seguro. */
+  cache?: number;
+  /** A entrada gravada no cache (Anthropic, GPT-5.6+). Sem preço, a cheia. */
+  escrita?: number;
 }
 
 /**
@@ -30,7 +35,10 @@ export function precoConhecido(provider: string, model: string): Preco | null {
   if (provider === "ollama") return { entrada: 0, saida: 0 };
   const p = getPricing(provider, model);
   if (p.inputPerMillion != null && p.outputPerMillion != null) {
-    return { entrada: p.inputPerMillion, saida: p.outputPerMillion };
+    const preco: Preco = { entrada: p.inputPerMillion, saida: p.outputPerMillion };
+    if (p.cachedInputPerMillion != null) preco.cache = p.cachedInputPerMillion;
+    if (p.cacheWritePerMillion != null) preco.escrita = p.cacheWritePerMillion;
+    return preco;
   }
   const emb = getAllEmbeddingModels().find((m) => m.model === model && !m.discovered);
   if (emb) return { entrada: emb.pricePerMillion, saida: 0 };
@@ -68,10 +76,31 @@ export function gastoDesde(
         semPreco += l.r;
         continue;
       }
-      total += (l.i / 1_000_000) * p.entrada + (l.o / 1_000_000) * p.saida;
+      total += custoDoLancamento(l, p);
     }
   }
   return { total, semPreco };
+}
+
+/**
+ * O que um lançamento custa: a entrada que veio do cache pelo preço de cache,
+ * a gravada no cache pelo de escrita, o resto da entrada e a saída pelos
+ * preços cheios. (A entrada `i` é TODA a entrada; `c` e `w` são pedaços dela.)
+ */
+export function custoDoLancamento(
+  l: { i: number; o: number; c?: number; w?: number },
+  p: Preco
+): number {
+  const lido = Math.min(l.c ?? 0, l.i);
+  const gravado = Math.min(l.w ?? 0, l.i - lido);
+  const cheio = l.i - lido - gravado;
+  return (
+    (cheio * p.entrada +
+      lido * (p.cache ?? p.entrada) +
+      gravado * (p.escrita ?? p.entrada) +
+      l.o * p.saida) /
+    1_000_000
+  );
 }
 
 function fusoDaMaquina(): string {

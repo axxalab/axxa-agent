@@ -20,6 +20,7 @@ import type {
   MessageAttachment,
   NoteAttachment,
   ProviderMessage,
+  Usage,
 } from "../providers/base";
 import type AxxaPlugin from "../main";
 import { buscarContextoDoVault } from "./vaultLookup";
@@ -174,8 +175,13 @@ export async function streamReply(
       plugin.settings.effortConfigs
     );
     let lastOutputTokens = 0;
+    let ultimoUso: Usage | null = null;
+    // A conversa DESTE pedido (o uso vai pra ela mesmo que você troque de
+    // conversa no meio, ou ela vá pro segundo plano).
+    const donoDoPedido = useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
 
     startStreamTimer();
+    try {
     await activeProvider.streamChat(
       {
         model: activeModel,
@@ -201,8 +207,11 @@ export async function streamReply(
         tickStreamTokens(token);
       },
       (usage) => {
+        // Só GUARDA: há provider que manda o uso em todo pedaço do stream (o
+        // Gemini manda), e somar cada um multiplicava os tokens da conversa.
+        // A soma é uma por pedido, quando o stream acaba (abaixo).
         lastOutputTokens = usage.output;
-        addUsage(usage.input, usage.output);
+        ultimoUso = usage;
       },
       controller.signal,
       (reasoningDelta) => {
@@ -214,6 +223,11 @@ export async function streamReply(
         }
       }
     );
+    } finally {
+      // Uma soma por pedido — também quando parou no meio (o que chegou foi
+      // gasto).
+      if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
+    }
     endStreamTimer();
 
     // Heurística de truncamento: output ≈ teto de tokens → "Continuar". O

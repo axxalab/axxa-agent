@@ -17,6 +17,7 @@ import {
   type ProviderMessage,
   type ImageAttachment,
   type TokenHandler,
+  type Usage,
   type UsageHandler,
   type ReasoningHandler,
 } from "./base";
@@ -397,6 +398,12 @@ export interface DeltaNoFio {
 export interface UsoNoFio {
   prompt_tokens?: number;
   completion_tokens?: number;
+  /** O pedaço do prompt que veio do cache (subconjunto de prompt_tokens) e,
+   *  onde há preço de escrita (GPT-5.6+, OpenRouter), o que foi gravado. */
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    cache_write_tokens?: number;
+  };
 }
 
 /** Um chunk `data:` do SSE. */
@@ -475,15 +482,19 @@ export function parseOpenAIChatMessage(
   return { content, toolCalls, reasoning };
 }
 
-export function usageFrom(json: {
-  usage?: UsoNoFio;
-}): { input: number; output: number } | undefined {
-  return json.usage
-    ? {
-        input: json.usage.prompt_tokens ?? 0,
-        output: json.usage.completion_tokens ?? 0,
-      }
-    : undefined;
+export function usageFrom(json: { usage?: UsoNoFio }): Usage | undefined {
+  const u = json.usage;
+  if (!u) return undefined;
+  const usage: Usage = {
+    input: u.prompt_tokens ?? 0,
+    output: u.completion_tokens ?? 0,
+  };
+  // Só quando vieram: um 0 explícito também é informação (não houve cache).
+  const lido = u.prompt_tokens_details?.cached_tokens;
+  const gravado = u.prompt_tokens_details?.cache_write_tokens;
+  if (typeof lido === "number") usage.cacheRead = lido;
+  if (typeof gravado === "number" && gravado > 0) usage.cacheWrite = gravado;
+  return usage;
 }
 
 // ============================================================
@@ -547,7 +558,7 @@ export async function parseOpenAICompatSSE(
   // distintas, avança um contador no 1º chunk de cada tool (id/name presentes).
   // v0.1.228.
   let lastToolIdx = -1;
-  let usage: { input: number; output: number } | undefined;
+  let usage: Usage | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -614,11 +625,8 @@ export async function parseOpenAICompatSSE(
           }
         }
         if (json?.usage) {
-          usage = {
-            input: json.usage.prompt_tokens ?? 0,
-            output: json.usage.completion_tokens ?? 0,
-          };
-          if (onUsage) onUsage(usage);
+          usage = usageFrom(json);
+          if (usage && onUsage) onUsage(usage);
         }
       } catch {
         /* chunk JSON inválido — pula */

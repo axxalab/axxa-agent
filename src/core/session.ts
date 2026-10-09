@@ -442,6 +442,8 @@ export class ChatSession {
       messages: st.messages,
       tokensIn: st.tokensIn,
       tokensOut: st.tokensOut,
+      tokensCached: st.tokensCached,
+      tokensCacheWrite: st.tokensCacheWrite,
     });
     return true;
   }
@@ -469,6 +471,8 @@ export class ChatSession {
       effort: run.effort,
       tokensIn: run.tokensIn,
       tokensOut: run.tokensOut,
+      tokensCached: run.tokensCached,
+      tokensCacheWrite: run.tokensCacheWrite,
       messages: guardadas.map((m) => ({
         type: m.type as "user" | "ai-response",
         content: m.content,
@@ -498,6 +502,8 @@ export class ChatSession {
         effort: chat.effort,
         tokensIn: chat.tokensIn,
         tokensOut: chat.tokensOut,
+        tokensCached: chat.tokensCached,
+        tokensCacheWrite: chat.tokensCacheWrite,
         messageCount: chat.messages.length,
         toolCount: chat.messages.reduce(
           (n, m) => n + (m.agentSteps?.length ?? 0),
@@ -537,7 +543,7 @@ export class ChatSession {
     st.setCurrentChatTitle(run.title);
     st.lockSession(run.provider, run.model, run.mode);
     st.resetUsage();
-    st.addUsage(run.tokensIn, run.tokensOut);
+    st.restaurarUso(run);
     if (run.effort) this.effort = run.effort;
     // Volta exatamente onde a leitura parou: o que chegou enquanto você não
     // estava olhando fica logo abaixo, em vez de você cair no fim e ter que
@@ -642,7 +648,7 @@ export class ChatSession {
       st.setCurrentChatTitle(chat.title);
       st.lockSession(chat.provider, chat.model, chat.mode);
       st.resetUsage();
-      st.addUsage(chat.tokensIn, chat.tokensOut);
+      st.restaurarUso(chat);
       st.setSessionPersona(chat.persona ?? "");
       st.setSessionInstructions(chat.instructions ?? "");
       st.setCurrentChatStarred(chat.starred === true);
@@ -803,6 +809,8 @@ export class ChatSession {
       effort: cfg.effort,
       tokensIn: st.tokensIn,
       tokensOut: st.tokensOut,
+      tokensCached: st.tokensCached,
+      tokensCacheWrite: st.tokensCacheWrite,
       persona: st.sessionPersona || undefined,
       instructions: st.sessionInstructions || undefined,
       starred: st.currentChatStarred || undefined,
@@ -839,6 +847,8 @@ export class ChatSession {
         effort: chat.effort,
         tokensIn: chat.tokensIn,
         tokensOut: chat.tokensOut,
+        tokensCached: chat.tokensCached,
+        tokensCacheWrite: chat.tokensCacheWrite,
         messageCount: chat.messages.length,
         toolCount: chat.messages.reduce(
           (n, m) => n + (m.agentSteps?.length ?? 0),

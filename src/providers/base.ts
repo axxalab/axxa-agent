@@ -108,8 +108,14 @@ export type ReasoningHandler = (delta: string) => void;
 
 /** Usage tokens (prompt+completion) — vem no final do stream / no response. */
 export interface Usage {
+  /** Todo o input do pedido — INCLUSIVE o que veio do cache. */
   input: number;
   output: number;
+  /** Do `input`, quanto o provider leu do cache de prompt (cobra menos). */
+  cacheRead?: number;
+  /** Do `input`, quanto o provider GRAVOU no cache (Anthropic e GPT-5.6+
+   *  cobram mais por isso). */
+  cacheWrite?: number;
 }
 
 /** Callback opcional pra receber usage quando o provider informar. */

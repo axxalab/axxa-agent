@@ -45,6 +45,10 @@ export interface ChatData {
   effort: string;
   tokensIn: number;
   tokensOut: number;
+  /** Do tokensIn, quanto veio do cache de prompt e quanto foi gravado nele.
+   *  Conversa antiga não tem: ausente é 0. */
+  tokensCached?: number;
+  tokensCacheWrite?: number;
   /** Persona / system prompt custom do chat ("" ou ausente = prompt padrão). */
   persona?: string;
   /** Instruções do projeto onde a conversa nasceu. Ficam GRAVADAS na conversa,
@@ -78,6 +82,8 @@ export interface ChatSummary {
   effort: string;
   tokensIn: number;
   tokensOut: number;
+  tokensCached?: number;
+  tokensCacheWrite?: number;
   messageCount: number;
   /** Quantas ações de tool a conversa rodou (o `tools_used` do frontmatter).
    *  É o que a home do Agent mostra em cada cartão — sem isto a lista de lá
@@ -182,7 +188,7 @@ model: ${yamlString(chat.model)}
 effort: ${yamlString(chat.effort)}
 ${chat.persona ? `persona: ${yamlString(chat.persona)}\n` : ""}${chat.instructions ? `instructions: ${yamlString(chat.instructions)}\n` : ""}${chat.starred ? "starred: true\n" : ""}${chat.vault === undefined ? "" : `vault: ${chat.vault}\n`}tokens_in: ${chat.tokensIn}
 tokens_out: ${chat.tokensOut}
-message_count: ${chat.messages.length}
+${chat.tokensCached ? `tokens_cached: ${chat.tokensCached}\n` : ""}${chat.tokensCacheWrite ? `tokens_cache_write: ${chat.tokensCacheWrite}\n` : ""}message_count: ${chat.messages.length}
 ${toolsBlock}tags:
 ${tags}
 ---`;
@@ -244,7 +250,13 @@ export function renderChatMarkdown(chat: ChatData): string {
 
 // Chaves do frontmatter que devem virar Number. Demais valores (id, title…)
 // ficam string — evita coagir um id numérico e perder zeros à esquerda. v0.1.228
-const NUMERIC_KEYS = new Set(["tokens_in", "tokens_out", "message_count"]);
+const NUMERIC_KEYS = new Set([
+  "tokens_in",
+  "tokens_out",
+  "tokens_cached",
+  "tokens_cache_write",
+  "message_count",
+]);
 
 function parseSimpleYaml(text: string): Record<string, string | number | string[]> {
   const result: Record<string, string | number | string[]> = {};
@@ -401,6 +413,8 @@ export function parseChatMarkdown(content: string): ChatData {
     vault: fm.vault === undefined ? undefined : yamlBool(fm.vault),
     tokensIn: Number(fm.tokens_in ?? 0),
     tokensOut: Number(fm.tokens_out ?? 0),
+    tokensCached: fm.tokens_cached === undefined ? undefined : Number(fm.tokens_cached),
+    tokensCacheWrite: fm.tokens_cache_write === undefined ? undefined : Number(fm.tokens_cache_write),
     messages,
   };
 }
@@ -449,6 +463,8 @@ export function summaryFromFrontmatter(
     effort: texto(fm.effort),
     tokensIn: Number(fm.tokens_in ?? 0),
     tokensOut: Number(fm.tokens_out ?? 0),
+    tokensCached: fm.tokens_cached === undefined ? undefined : Number(fm.tokens_cached),
+    tokensCacheWrite: fm.tokens_cache_write === undefined ? undefined : Number(fm.tokens_cache_write),
     messageCount: Number(fm.message_count ?? 0),
     toolCount: Array.isArray(fm.tools_used) ? fm.tools_used.length : 0,
     filePath,
