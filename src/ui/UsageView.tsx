@@ -363,6 +363,23 @@ export function UsageView({
               unidade={m === "cost" ? tr("avg") : tr("tokens")}
             />
           </div>
+          {/* O cache de prompt trabalhando: quanto do que foi mandado saiu
+              pelo preço de cache, e quanto isso poupou. Só aparece com cache. */}
+          {agg.total.tokensCached > 0 && agg.total.tokensIn > 0 && (
+            <p className="axxa-usage-cache">
+              <Icon name="zap" size={12} />
+              <span>
+                {agg.total.economia >= 0.01
+                  ? tr("{pct}% of what you sent came from the cache — saved {usd}", {
+                      pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
+                      usd: formatUsdRounded(agg.total.economia),
+                    })
+                  : tr("{pct}% of what you sent came from the cache", {
+                      pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
+                    })}
+              </span>
+            </p>
+          )}
         </section>
 
         {/* Os MESMOS dois números do cartão acima, agora ao longo do tempo:

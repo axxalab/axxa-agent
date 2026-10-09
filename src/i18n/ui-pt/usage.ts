@@ -52,6 +52,9 @@ export const PT_USAGE: Record<string, string> = {
   // "Por conversa" cortava no quadro do celular ("POR CONV…"): o rótulo tem
   // a largura de "PER CHAT", e "chat" é palavra corrente em português.
   "Per chat": "Por chat",
+  "{pct}% of what you sent came from the cache — saved {usd}":
+    "{pct}% do que você mandou saiu do cache — economizou {usd}",
+  "{pct}% of what you sent came from the cache": "{pct}% do que você mandou saiu do cache",
   "avg": "média",
   // O gráfico no tempo, e o vazio dele.
   "Tokens over time": "Tokens ao longo do tempo",

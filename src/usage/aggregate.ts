@@ -16,6 +16,9 @@ export interface UsageBucket {
   /** Do tokensIn, quanto veio do cache de prompt. */
   tokensCached: number;
   cost: number; // USD, 0 se tudo free
+  /** USD que o cache de prompt poupou (o custo sem cache − o custo de
+   *  verdade). Gravar no cache custa mais, então pode sair negativo. */
+  economia: number;
   /** true se algum chat dentro do bucket tem modelo sem pricing conhecido */
   hasUnknownCost: boolean;
 }
@@ -34,6 +37,8 @@ export interface ChatUsageRow {
   tokensOut: number;
   tokensCached: number;
   cost: number | null; // null = pricing unknown
+  /** USD que o cache poupou nesta conversa (0 sem preço conhecido). */
+  economia: number;
   messages: number;
   filePath: string;
 }
@@ -60,6 +65,7 @@ function emptyBucket(): UsageBucket {
     tokensOut: 0,
     tokensCached: 0,
     cost: 0,
+    economia: 0,
     hasUnknownCost: false,
   };
 }
@@ -78,6 +84,7 @@ function bump(bucket: UsageBucket, row: ChatUsageRow): void {
   bucket.tokensIn += row.tokensIn;
   bucket.tokensOut += row.tokensOut;
   bucket.tokensCached += row.tokensCached;
+  bucket.economia += row.economia;
   if (row.cost == null) {
     bucket.hasUnknownCost = true;
   } else {
@@ -112,6 +119,10 @@ function summaryToRow(s: ChatSummary, pricingCache?: Map<string, ModelPricing>):
     lido: tokensCached,
     gravado,
   });
+  // O mesmo pedido, todo pelo preço cheio de entrada: a diferença é o que o
+  // cache poupou.
+  const semCache = tokensCached > 0 || gravado > 0 ? calculateCost(pricing, tokensIn, tokensOut) : cost;
+  const economia = cost != null && semCache != null ? semCache - cost : 0;
   return {
     id: s.id,
     title: s.title,
@@ -124,6 +135,7 @@ function summaryToRow(s: ChatSummary, pricingCache?: Map<string, ModelPricing>):
     tokensOut,
     tokensCached,
     cost,
+    economia,
     messages: s.messageCount,
     filePath: s.filePath,
   };

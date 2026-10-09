@@ -21,7 +21,13 @@ import {
   type Provider,
   type ProviderToolDefinition,
 } from "../providers/base";
-import { janelaDoOllama, tokensDoAnexo, tokensDoPedido } from "../providers/ollama";
+import {
+  contextoConhecidoDoOllama,
+  contextoDoOllama,
+  janelaDoOllama,
+  tokensDoAnexo,
+  tokensDoPedido,
+} from "../providers/ollama";
 import { getEnrichedInfo } from "../providers/modelInfoStore";
 import { getModelCard } from "../providers/modelDescriptions";
 import { getContextWindow } from "./contextWindows";
@@ -96,14 +102,37 @@ export async function janelaDoModelo(
   model: string,
   credencial: string
 ): Promise<number> {
+  if (provider === "ollama" && !aprendidas.has(`${provider}|${model}`)) {
+    return janelaDoOllama(credencial, model);
+  }
+  return janelaConhecida(provider, model);
+}
+
+/**
+ * A mesma janela, com o que já se sabe — sem perguntar ao servidor (a tela
+ * usa: o medidor no topo da conversa). No Ollama, o máximo do modelo se algum
+ * pedido já perguntou; senão, os 32k que o pedido usaria.
+ */
+export function janelaConhecida(provider: string, model: string): number {
   const aprendida = aprendidas.get(`${provider}|${model}`);
   if (aprendida) return aprendida;
-  if (provider === "ollama") return janelaDoOllama(credencial, model);
+  if (provider === "ollama") {
+    return contextoDoOllama(Number.MAX_SAFE_INTEGER, 0, contextoConhecidoDoOllama(model));
+  }
   const doCatalogo = getEnrichedInfo(provider, model)?.contextWindow;
   if (doCatalogo && doCatalogo > 0) return doCatalogo;
   const doCartao = getModelCard(provider, model).contextWindow;
   if (doCartao && doCartao > 0) return doCartao;
   return getContextWindow(model);
+}
+
+/**
+ * Quanto a conversa ocupa da janela, por alto, sem pedido feito ainda (a
+ * conversa recém-reaberta): o que o modelo vê dela — do último resumo em
+ * diante. Sem o system e as ferramentas, que só o pedido sabe.
+ */
+export function ocupacaoEstimada(msgs: readonly StoreMessageLike[]): number {
+  return msgs.slice(inicioVisivel(msgs)).reduce((s, m) => s + custoDaMensagem(m), 0);
 }
 
 /**

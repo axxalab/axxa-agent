@@ -111,6 +111,9 @@ export const PT_CHAT: Record<string, string> = {
   "Copy answer": "Copiar resposta",
   "Copy message": "Copiar mensagem",
   "Earlier messages summarized for the model": "Mensagens anteriores resumidas para o modelo",
+  "{used} of {total} tokens of the model's context window. Near the limit, the start of the chat is summarized.":
+    "{used} de {total} tokens da janela do modelo. Perto do limite, o começo da conversa vira resumo.",
+  "{pct}% of what this chat sent came from the cache.": "{pct}% do que esta conversa mandou saiu do cache.",
   "Couldn't copy. Select the text and use the system Copy.":
     "Não deu pra copiar. Selecione o texto e use o Copiar do sistema.",
   "Listen": "Ouvir",

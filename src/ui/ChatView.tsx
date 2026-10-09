@@ -105,6 +105,8 @@ import { filterModels, groupModels } from "./modelGroups";
 // O limite de favoritos é UM número, e ele mora onde se marca o favorito.
 import { FAVORITE_LIMIT } from "./SettingsTab";
 import { texto } from "../core/texto";
+import { janelaConhecida, ocupacaoEstimada } from "../core/compactacao";
+import { formatTokens } from "../core/contextWindows";
 import { localeDaInterface, marca, tr } from "../i18n/tr";
 
 /** Título da folha do "+" em cada nível. */
@@ -164,6 +166,11 @@ export function ChatView({
   // Lido do store pra re-renderizar quando a sessão trava/destrava.
   const locked = useChatStore((s) => s.sessionProvider) !== null;
   const cfg = session.config;
+  // O medidor da janela: o prompt do último pedido desta conversa (o número
+  // que o provider mandou) e o quanto dela saiu do cache.
+  const ultimoPrompt = useChatStore((s) => s.lastPromptTokens);
+  const tokensDaConversa = useChatStore((s) => s.tokensIn);
+  const tokensDoCache = useChatStore((s) => s.tokensCached);
 
   // O rascunho é do CHAT, não da tela: ele mora no store (ver drafts lá) pra
   // sobreviver a sair pra Projects/Skills e pra não vazar de uma conversa pra
@@ -1109,7 +1116,17 @@ ${tr("Open Settings › Providers to add it, then run the connection test.")}`,
           </span>
           {locked && (
             <span className="axxa-topbar-meta">
-              {tr(moduleLabel(cfg.mode))} · {cfg.model}
+              <span className="axxa-topbar-meta-text">
+                {tr(moduleLabel(cfg.mode))} · {cfg.model}
+              </span>
+              <MedidorDaJanela
+                provider={cfg.provider}
+                model={cfg.model}
+                usados={ultimoPrompt}
+                mensagens={messages}
+                enviados={tokensDaConversa}
+                doCache={tokensDoCache}
+              />
             </span>
           )}
         </div>
@@ -2275,6 +2292,72 @@ function CopyButton({
     >
       <Icon name={copied ? "check" : "copy"} size={15} />
       {!iconOnly && <span>{copied ? tr("Copied") : tr("Copy")}</span>}
+    </button>
+  );
+}
+
+/**
+ * Quanto da janela do modelo a conversa já ocupa — um anel e a porcentagem,
+ * no topo. Perto de 80% o próximo turno resume o começo (core/compactacao),
+ * e o anel avisa antes. O número é o prompt do último pedido (o que o
+ * provider contou); na conversa recém-reaberta, uma estimativa (com "~").
+ * Tocar mostra o detalhe — no celular não há passar o mouse.
+ */
+function MedidorDaJanela({
+  provider,
+  model,
+  usados,
+  mensagens,
+  enviados,
+  doCache,
+}: {
+  provider: string;
+  model: string;
+  usados: number;
+  mensagens: ChatMessage[];
+  enviados: number;
+  doCache: number;
+}) {
+  const estimado = usados <= 0;
+  const ocupados = estimado ? ocupacaoEstimada(mensagens) : usados;
+  if (ocupados <= 0 || !model) return null;
+  const janela = janelaConhecida(provider, model);
+  const pct = Math.min(100, Math.round((ocupados / janela) * 100));
+  const raio = 4;
+  const volta = 2 * Math.PI * raio;
+  const detalhe = [
+    tr("{used} of {total} tokens of the model's context window. Near the limit, the start of the chat is summarized.", {
+      used: (estimado ? "~" : "") + formatTokens(ocupados),
+      total: formatTokens(janela),
+    }),
+    enviados > 0 && doCache > 0
+      ? tr("{pct}% of what this chat sent came from the cache.", {
+          pct: Math.round((doCache / enviados) * 100),
+        })
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <button
+      type="button"
+      className={"axxa-ctx-meter" + (pct >= 80 ? " is-cheio" : "")}
+      aria-label={detalhe}
+      title={detalhe}
+      onClick={() => new Notice(detalhe)}
+    >
+      <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+        <circle className="axxa-ctx-meter-trilho" cx="5" cy="5" r={raio} />
+        <circle
+          className="axxa-ctx-meter-arco"
+          cx="5"
+          cy="5"
+          r={raio}
+          strokeDasharray={volta}
+          strokeDashoffset={volta * (1 - pct / 100)}
+        />
+      </svg>
+      {(estimado ? "~" : "") + pct}%
     </button>
   );
 }

@@ -732,11 +732,63 @@ body.theme-dark {
 }
 
 .axxa-root .axxa-topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--axxa-2);
+  min-width: 0;
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
   white-space: nowrap;
+}
+
+/* O modo e o modelo encolhem (reticências); o medidor ao lado, nunca. */
+.axxa-root .axxa-topbar-meta-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* O medidor da janela: um anel fino e a porcentagem. Botão (tocar mostra o
+   detalhe), mas sem cara de botão — é uma leitura. */
+.axxa-root button.axxa-ctx-meter {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--axxa-1);
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.axxa-root button.axxa-ctx-meter:hover {
+  background: none;
+  color: var(--text-muted);
+}
+
+.axxa-root button.axxa-ctx-meter.is-cheio {
+  color: var(--text-warning);
+}
+
+.axxa-root .axxa-ctx-meter svg {
+  transform: rotate(-90deg);
+}
+
+.axxa-root .axxa-ctx-meter-trilho {
+  fill: none;
+  stroke: var(--background-modifier-border);
+  stroke-width: 2;
+}
+
+.axxa-root .axxa-ctx-meter-arco {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
 .axxa-root .axxa-messages {
@@ -1353,6 +1405,18 @@ body.theme-dark {
 
 /* A unidade explica o número e é ela que encolhe: "38" sozinho não é nada,
    mas entre "38" e "of 182 days", quem tem que sobrar é o 38. */
+/* A linha do cache embaixo dos módulos do uso (só com cache). */
+.axxa-root .axxa-usage-cache {
+  display: flex;
+  align-items: center;
+  gap: var(--axxa-1);
+  margin: var(--axxa-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  /* O tamanho do ícone é a variável (o svg do Obsidian ignora o atributo). */
+  --icon-size: 12px;
+}
+
 .axxa-root .axxa-mod-unit {
   min-width: 0;
   overflow: hidden;

@@ -269,6 +269,12 @@ export function contextoDoOllama(prompt: number, resposta: number, maxModelo?: n
   return Math.min(degrau, teto);
 }
 
+/** O máximo do modelo, se algum pedido já perguntou (sem ir ao servidor). */
+export function contextoConhecidoDoOllama(model: string): number | undefined {
+  for (const [chave, max] of contextoMaximo) if (chave.endsWith(`|${model}`)) return max;
+  return undefined;
+}
+
 /**
  * A maior janela que um pedido ao modelo pode ter: o contexto máximo dele (o
  * /api/show, perguntado uma vez) até o último degrau; sem saber o máximo, os
