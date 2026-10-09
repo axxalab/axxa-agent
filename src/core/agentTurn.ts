@@ -9,6 +9,7 @@
 
 import { useChatStore, type UsoDoPedido } from "../store/chat";
 import {
+  chaveDeCache,
   descartarDoTurnoQueFalhou,
   estadoDoTurno,
   gravarContextoDoTurno,
@@ -242,6 +243,7 @@ export async function runAgentTurn(
             temperature: effortCfg.temperature,
             effort: isEffortLevel(effort) ? effort : undefined,
             tools,
+            cacheKey: chaveDeCache(donoDoPedido),
           },
           apiKey,
           onToken,

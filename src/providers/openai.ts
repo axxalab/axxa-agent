@@ -55,6 +55,20 @@ interface CatalogoOpenAI {
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 
 /**
+ * A OpenAI guarda o começo do pedido em cache sozinha (a partir de 1.024
+ * tokens), mas só acerta se o pedido cair na máquina que guardou. A
+ * `prompt_cache_key` entra no roteamento: com a conversa como chave, os
+ * pedidos dela vão pro mesmo lugar e o histórico sai pelo preço de cache.
+ */
+export function comChaveDeCache(
+  body: Record<string, unknown>,
+  req: ProviderRequest
+): Record<string, unknown> {
+  if (req.cacheKey) body.prompt_cache_key = req.cacheKey;
+  return body;
+}
+
+/**
  * A OpenAI recusou ferramentas com raciocínio pra este modelo (o GPT-5.4 em
  * diante faz isso no /chat/completions; a regra em paramPolicy cobre os
  * conhecidos). Um modelo que a regra ainda não conhecia aprende aqui: fica
@@ -87,10 +101,13 @@ export class OpenAIProvider implements Provider {
     if (!apiKey || !apiKey.trim()) {
       throw new ProviderError("OpenAI API key not configured.", "no-key");
     }
-    const body = buildChatBody(req, {
-      provider: "openai",
-      maxTokensField: "max_completion_tokens", // gpt-4o+ exigem (max_tokens deprecado)
-    });
+    const body = comChaveDeCache(
+      buildChatBody(req, {
+        provider: "openai",
+        maxTokensField: "max_completion_tokens", // gpt-4o+ exigem (max_tokens deprecado)
+      }),
+      req
+    );
 
     const pedir = async () => {
       let r;
@@ -151,12 +168,15 @@ export class OpenAIProvider implements Provider {
       );
     }
 
-    const body = buildChatBody(req, {
-      provider: "openai",
-      stream: true,
-      includeUsage: true,
-      maxTokensField: "max_completion_tokens",
-    });
+    const body = comChaveDeCache(
+      buildChatBody(req, {
+        provider: "openai",
+        stream: true,
+        includeUsage: true,
+        maxTokensField: "max_completion_tokens",
+      }),
+      req
+    );
 
     const abrir = () =>
       fetchStream(OPENAI_ENDPOINT, {

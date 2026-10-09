@@ -30,6 +30,12 @@ export function estadoDoTurno(): EstadoDoTurno {
   };
 }
 
+/** A chave de cache dos pedidos de uma conversa (ver ProviderRequest.cacheKey):
+ *  a mesma em todo pedido dela, e só dela. Sem conversa, sem chave. */
+export function chaveDeCache(chatId: string | null | undefined): string | undefined {
+  return chatId ? `axxa-${chatId}` : undefined;
+}
+
 /** O que o modelo do turno lê (o que ele não lê vira texto no histórico). */
 export function oQueOModeloLe(provider: string, model: string): { imagem: boolean; pdf: boolean } {
   const caps = getModelCapabilities(provider, model);

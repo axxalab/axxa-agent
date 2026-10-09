@@ -6,6 +6,7 @@
 
 import { useChatStore } from "../store/chat";
 import {
+  chaveDeCache,
   descartarDoTurnoQueFalhou,
   estadoDoTurno,
   gravarContextoDoTurno,
@@ -190,6 +191,7 @@ export async function streamReply(
         maxTokens,
         temperature: effortCfg.temperature,
         effort: isEffortLevel(effort) ? effort : undefined,
+        cacheKey: chaveDeCache(donoDoPedido),
       },
       apiKey,
       (token) => {

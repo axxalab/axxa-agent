@@ -87,6 +87,12 @@ export interface ProviderRequest {
    *  responder recebe dele QUANTO pensar e um piso de max_tokens (ver
    *  paramPolicy). Sem ele (assistente, títulos), vale o padrão do provider. */
   effort?: EffortLevel;
+  /** A conversa a que o pedido pertence. Com ela, o provider guarda o começo
+   *  do pedido em cache (Anthropic, OpenRouter) ou manda os pedidos dela pro
+   *  mesmo servidor (OpenAI, OpenRouter) — o turno seguinte relê do cache em
+   *  vez de pagar o histórico inteiro de novo. Sem ela (títulos, assistente,
+   *  pedido avulso), nada é gravado: gravar custa mais e ninguém relê. */
+  cacheKey?: string;
 }
 
 export interface ProviderResponse {

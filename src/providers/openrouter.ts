@@ -106,6 +106,25 @@ export function applyPdfPlugin(
   return body;
 }
 
+/**
+ * Cache de prompt no OpenRouter (só em conversa — ver ProviderRequest.cacheKey).
+ *
+ * `session_id`: os pedidos da conversa vão pro MESMO provedor de lá — sem
+ * isso, um pedido podia cair noutro provedor do mesmo modelo, que não tem o
+ * cache. Os Claude (anthropic/…) só guardam em cache se a gente pedir: o
+ * `cache_control` no topo é o automático, que anda com a conversa. Os
+ * demais (OpenAI, Gemini, DeepSeek, Grok…) guardam sozinhos.
+ */
+export function aplicarCache(
+  body: Record<string, unknown>,
+  req: ProviderRequest
+): Record<string, unknown> {
+  if (!req.cacheKey) return body;
+  body.session_id = req.cacheKey.slice(0, 256);
+  if (/^~?anthropic\//.test(req.model)) body.cache_control = { type: "ephemeral" };
+  return body;
+}
+
 export class OpenRouterProvider implements Provider {
   id = "openrouter";
   name = "OpenRouter";
@@ -119,8 +138,8 @@ export class OpenRouterProvider implements Provider {
       throw new ProviderError("OpenRouter API key not configured.", "no-key");
     }
 
-    const body = applyPdfPlugin(
-      buildChatBody(req, { provider: "openrouter" }),
+    const body = aplicarCache(
+      applyPdfPlugin(buildChatBody(req, { provider: "openrouter" }), req),
       req
     );
 
@@ -163,12 +182,15 @@ export class OpenRouterProvider implements Provider {
       throw new ProviderError("OpenRouter API key not configured.", "no-key");
     }
 
-    const body = applyPdfPlugin(
-      buildChatBody(req, {
-        provider: "openrouter",
-        stream: true,
-        includeUsage: true,
-      }),
+    const body = aplicarCache(
+      applyPdfPlugin(
+        buildChatBody(req, {
+          provider: "openrouter",
+          stream: true,
+          includeUsage: true,
+        }),
+        req
+      ),
       req
     );
 

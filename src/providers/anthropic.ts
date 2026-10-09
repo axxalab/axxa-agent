@@ -99,12 +99,26 @@ interface AnthropicTool {
   input_schema: object;
 }
 
+/** O único tipo que a Anthropic tem: dura 5 min, renovados a cada leitura. */
+interface CacheControl {
+  type: "ephemeral";
+}
+const EFEMERO: CacheControl = { type: "ephemeral" };
+
+interface BlocoDoSistema {
+  type: "text";
+  text: string;
+  cache_control?: CacheControl;
+}
+
 interface AnthropicBody {
   model: string;
   max_tokens: number;
   messages: AnthropicMessage[];
   stream?: boolean;
-  system?: string;
+  system?: string | BlocoDoSistema[];
+  /** Cache automático: a marca vai no último bloco e anda com a conversa. */
+  cache_control?: CacheControl;
   tools?: AnthropicTool[];
   temperature?: number;
   /** Quanto pensar (low…max), nos Claude que têm o controle. */
@@ -346,6 +360,16 @@ function buildBody(req: ProviderRequest, stream: boolean): AnthropicBody {
     stream,
   };
   if (system) body.system = system;
+  // Cache de prompt (só em conversa — ver ProviderRequest.cacheKey). Duas
+  // marcas: a automática, no fim do pedido, que anda com a conversa (o turno
+  // seguinte relê tudo até ali); e uma no fim do system, que guarda
+  // ferramentas + instruções mesmo quando o histórico muda no meio (a mídia
+  // antiga que vira menção, por exemplo). Prompt abaixo do mínimo do modelo
+  // (512 a 4.096 tokens) só não entra no cache — sem erro.
+  if (req.cacheKey) {
+    if (system) body.system = [{ type: "text", text: system, cache_control: EFEMERO }];
+    body.cache_control = EFEMERO;
+  }
   // Claude usa range 0..1 (paramPolicy clampa) — não 0..2 como a OpenAI — e
   // os atuais (Fable, Opus 4.7+, Sonnet 5+) não aceitam nenhuma: a política
   // devolve undefined e o campo nem vai.

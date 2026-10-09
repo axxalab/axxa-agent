@@ -261,6 +261,36 @@ export function contextoDoOllama(prompt: number, resposta: number, maxModelo?: n
   return Math.min(degrau, teto);
 }
 
+/** O num_ctx do último pedido a cada modelo, e quando foi. */
+const janelaEmUso = new Map<string, { ctx: number; quando: number }>();
+
+/** Quanto o Ollama segura o modelo carregado sem pedido (o keep_alive
+ *  padrão dele). */
+const MODELO_CARREGADO_MS = 5 * 60 * 1000;
+
+/**
+ * O num_ctx que vai, dado o que o pedido precisa. Mudar o num_ctx RECARREGA
+ * o modelo — e joga fora o que o Ollama tinha guardado do começo do prompt
+ * (o histórico da conversa). Então, com o modelo ainda carregado, a janela
+ * não desce: um pedido menor no meio (o título, uma pergunta curta noutra
+ * conversa) usa a janela que já está lá. Parado há mais que o keep_alive, o
+ * Ollama já descarregou: volta ao que o pedido precisa.
+ */
+export function janelaDoPedido(
+  chave: string,
+  precisa: number,
+  agora: number,
+  maxModelo?: number
+): number {
+  const antes = janelaEmUso.get(chave);
+  let ctx = precisa;
+  if (antes && agora - antes.quando < MODELO_CARREGADO_MS && antes.ctx > ctx) {
+    ctx = maxModelo && maxModelo > 0 ? Math.min(antes.ctx, maxModelo) : antes.ctx;
+  }
+  janelaEmUso.set(chave, { ctx, quando: agora });
+  return ctx;
+}
+
 export class OllamaProvider implements Provider {
   id = "ollama";
   name = "Ollama";
@@ -305,10 +335,12 @@ export class OllamaProvider implements Provider {
     stream: boolean
   ): Promise<Record<string, unknown>> {
     const numPredict = resolveMaxTokens("ollama", req.model, req.maxTokens ?? 2000, req.effort);
-    const numCtx = contextoDoOllama(
-      tokensDoPedido(req),
-      numPredict,
-      await contextoDoModelo(endpoint, req.model)
+    const maxModelo = await contextoDoModelo(endpoint, req.model);
+    const numCtx = janelaDoPedido(
+      `${endpoint}|${req.model}`,
+      contextoDoOllama(tokensDoPedido(req), numPredict, maxModelo),
+      Date.now(),
+      maxModelo
     );
     const temp = resolveTemperature("ollama", req.model, req.temperature);
     // Body com OpenAI-compat messages — reusa o converter pra normalizar
