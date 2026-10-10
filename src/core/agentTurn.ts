@@ -273,13 +273,18 @@ export async function runAgentTurn(
       }
 
       let responseId: string | null = null;
+      // O começo deste pedido (o relógio do cache conta daqui) e se ele chegou
+      // ao provider — recusado antes não tocou no cache e não conta no ritmo.
+      let inicioDoPedido = Date.now();
+      let chegou = false;
       const onToken = (token: string) => {
+        chegou = true;
         if (responseId === null) {
           if (firstTurn) {
             updateActivity(commentId, { phase: "done" });
             firstTurn = false;
           }
-          responseId = addMessage({ type: "ai-response", content: token });
+          responseId = addMessage({ type: "ai-response", content: token, pedidoEm: inicioDoPedido });
           setStreamingMessageId(responseId);
         } else {
           appendToMessage(responseId, token);
@@ -310,7 +315,7 @@ export async function runAgentTurn(
         tokensDoPedido({ model: activeModel, messages: history, tools })
       );
       let response;
-      anotarPedido(donoDaRodada, ttlDoCache, Date.now());
+      inicioDoPedido = Date.now();
       try {
         response = await activeProvider.streamChat(
           {
@@ -327,10 +332,12 @@ export async function runAgentTurn(
           apiKey,
           onToken,
           (usage) => {
+            chegou = true;
             ultimoUso = usage;
           },
           controller.signal
         );
+        chegou = true;
       } catch (err) {
         // Recusado por TAMANHO antes de responder: o provider disse quanto
         // cabe (guardado pros próximos). No 1º pedido, o começo da conversa
@@ -365,6 +372,7 @@ export async function runAgentTurn(
         continue;
       } finally {
         if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
+        if (chegou) anotarPedido(donoDaRodada, ttlDoCache, inicioDoPedido);
       }
       endStreamTimer();
       setStreamingMessageId(null);
@@ -379,6 +387,7 @@ export async function runAgentTurn(
           responseId = addMessage({
             type: "ai-response",
             content: response.content || t.ai.emptyResponse,
+            pedidoEm: inicioDoPedido,
           });
         }
         if (runSteps.length > 0 && responseId) {

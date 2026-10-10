@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setRequestUrl } from "obsidian";
-import { anotarPedido, esquecerRitmos, ttlDoTurno, ttlParaOTurno, VIVE_1H } from "../src/core/cacheDoTurno";
+import { anotarPedido, esquecerRitmo, esquecerRitmos, ttlDoTurno, ttlParaOTurno, VIVE_1H } from "../src/core/cacheDoTurno";
 import { AnthropicProvider } from "../src/providers/anthropic";
 import { OpenRouterProvider } from "../src/providers/openrouter";
 import { custoDoLancamento } from "../src/usage/gastoDoDia";
@@ -295,5 +295,83 @@ describe("o turno escolhe a duração", () => {
     useChatStore.getState().addMessage({ type: "user", content: "mais uma" });
     await streamReply(ctx as never, "mais uma");
     expect(vistos[1].cacheTtl).toBe("1h");
+  });
+});
+
+describe("o que a revisão achou no ritmo", () => {
+  it("o relógio é o COMEÇO do pedido (pedidoEm), não o 1º token — num modelo que pensa minutos", () => {
+    const agora = 1_000 * MIN;
+    // pedido às −6,5 min, pensou 3 min, texto às −3,5 min: o cache de 5 min já morreu
+    const msgs = [{ type: "ai-response", timestamp: agora - 3.5 * MIN, pedidoEm: agora - 6.5 * MIN }];
+    expect(ttlParaOTurno({ chatId: null, provider: "anthropic", modo: "chat", agora, mensagens: msgs })).toBe("1h");
+  });
+
+  it("relida do disco (pode ter andado noutro aparelho): esquece o anotado e usa a última resposta", () => {
+    const agora = 1_000 * MIN;
+    anotarPedido("c", "5m", agora - 66 * MIN);
+    const msgs = [{ type: "ai-response", timestamp: agora - MIN, pedidoEm: agora - 1.2 * MIN }];
+    expect(ttlParaOTurno({ chatId: "c", provider: "anthropic", modo: "chat", agora, mensagens: msgs })).toBe("off");
+    esquecerRitmo("c");
+    expect(ttlParaOTurno({ chatId: "c", provider: "anthropic", modo: "chat", agora, mensagens: msgs })).toBe("5m");
+  });
+
+  it("o arquivo guarda quando o pedido saiu (req=) e devolve", () => {
+    const chat: ChatData = {
+      id: "c1", title: "T", date: "2026-10-10T12:00:00.000Z", mode: "chat", provider: "anthropic",
+      model: "claude-sonnet-5-5", effort: "med", tokensIn: 1, tokensOut: 1,
+      messages: [
+        { type: "user", content: "oi", timestamp: 1 },
+        { type: "ai-response", content: "olá", timestamp: 5000, pedidoEm: 2000 },
+      ],
+    };
+    const md = renderChatMarkdown(chat);
+    expect(md).toContain("<!-- axxa: ts=5000 req=2000 -->");
+    expect(parseChatMarkdown(md).messages).toEqual(chat.messages);
+  });
+
+  it("pedido recusado antes de chegar (429) não reinicia o relógio", async () => {
+    const agora = Date.now();
+    const st = useChatStore.getState();
+    st.setCurrentChatId("conversa-parada");
+    st.setMessages([
+      { id: "u1", type: "user", content: "oi", timestamp: agora - 71 * MIN },
+      { id: "r1", type: "ai-response", content: "olá", timestamp: agora - 70 * MIN },
+      { id: "u2", type: "user", content: "e aí?", timestamp: agora },
+    ]);
+    const vistos: ProviderRequest[] = [];
+    let recusar = true;
+    const provider = {
+      id: "anthropic",
+      name: "Anthropic",
+      supportsTools: true,
+      chat: async () => ({ content: "" }),
+      streamChat: async (req: ProviderRequest, _k: string, onToken: (t: string) => void) => {
+        vistos.push(req);
+        if (recusar) {
+          recusar = false;
+          throw new Error("429");
+        }
+        onToken("ok");
+        return { content: "ok" };
+      },
+    };
+    const ctx = {
+      plugin: { settings: { effortConfigs: undefined } } as never,
+      t: getTranslations("pt-br"),
+      abortRef: { current: null },
+      activeProviderId: "anthropic",
+      activeProvider: provider as never,
+      activeModel: "claude-sonnet-5-5",
+      activeMode: "chat",
+      useVault: false,
+      apiKeyFor: () => "k",
+      effort: "low",
+      resolveStyleInstruction: () => "",
+    };
+    await streamReply(ctx as never, "e aí?");
+    expect(vistos[0].cacheTtl).toBe("off");
+    // de novo, logo depois: o 429 não conta — a conversa segue parada há 70 min
+    await streamReply(ctx as never, "e aí?");
+    expect(vistos[1].cacheTtl).toBe("off");
   });
 });

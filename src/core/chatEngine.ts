@@ -247,7 +247,11 @@ export async function streamReply(
         tetoDaJanela
       );
       let ultimoUso: Usage | null = null;
-      anotarPedido(donoDoPedido, ttlDoCache, Date.now());
+      // O começo do pedido (o relógio do cache conta daqui) e se ele chegou ao
+      // provider — recusado antes (429, limite de gasto, rede) não tocou no
+      // cache e não conta no ritmo.
+      const inicioDoPedido = Date.now();
+      let chegou = false;
       startStreamTimer();
       try {
         await activeProvider.streamChat(
@@ -263,9 +267,10 @@ export async function streamReply(
           },
           apiKey,
           (token) => {
+            chegou = true;
             if (responseId === null) {
               updateActivity(commentId, { phase: "done" });
-              responseId = addMessage({ type: "ai-response", content: token });
+              responseId = addMessage({ type: "ai-response", content: token, pedidoEm: inicioDoPedido });
               setStreamingMessageId(responseId);
               // Flush do raciocínio bufferizado antes do 1º token de conteúdo.
               if (reasoningBuf) {
@@ -281,11 +286,13 @@ export async function streamReply(
             // Só GUARDA: há provider que manda o uso em todo pedaço do stream (o
             // Gemini manda), e somar cada um multiplicava os tokens da conversa.
             // A soma é uma por pedido, quando o stream acaba (abaixo).
+            chegou = true;
             lastOutputTokens = usage.output;
             ultimoUso = usage;
           },
           controller.signal,
           (reasoningDelta) => {
+            chegou = true;
             // Reasoning costuma vir ANTES do conteúdo (R1). Buffera até a
             // ai-response existir; depois acumula direto na mensagem.
             reasoningBuf += reasoningDelta;
@@ -294,10 +301,12 @@ export async function streamReply(
             }
           }
         );
+        chegou = true;
       } finally {
         // Uma soma por pedido — também quando parou no meio (o que chegou foi
         // gasto).
         if (ultimoUso) addUsage(ultimoUso, donoDoPedido);
+        if (chegou) anotarPedido(donoDoPedido, ttlDoCache, inicioDoPedido);
       }
       endStreamTimer();
     };

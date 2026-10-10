@@ -352,9 +352,13 @@ const RESULTADOS_INTEIROS = 2;
  * já tirou deles o que precisava, e pode chamar a ferramenta de novo. Os 2
  * mais recentes ficam inteiros. Devolve quantos encolheu.
  */
-export function encolherResultados(history: { role: string; content: string }[]): number {
+export function encolherResultados(
+  history: { role: string; content: string }[],
+  /** Só antes deste índice (o que vem depois o modelo ainda não leu). */
+  ate: number = history.length
+): number {
   const deFerramenta = history
-    .map((m, i) => (m.role === "tool" ? i : -1))
+    .map((m, i) => (m.role === "tool" && i < ate ? i : -1))
     .filter((i) => i >= 0)
     .slice(0, -RESULTADOS_INTEIROS);
   let encolhidos = 0;
@@ -393,7 +397,10 @@ export function conferirJanelaDoOllama(p: {
   if (p.providerId !== "ollama" || p.history.length <= p.inicioDaRodada || p.janela <= 0) return 0;
   const pedido = tokensDoPedido({ model: p.model, messages: p.history, tools: p.tools });
   if (pedido + Math.min(p.resposta, 8192) <= p.janela * LIMIAR) return 0;
-  return encolherResultados(p.history);
+  // Os resultados do último passo (depois da última fala do modelo) ele
+  // ainda não leu: ficam inteiros — encolher é só o que ele já usou.
+  const ultimaFala = p.history.map((m) => m.role).lastIndexOf("assistant");
+  return encolherResultados(p.history, ultimaFala < 0 ? p.history.length : ultimaFala);
 }
 
 // ── no turno ─────────────────────────────────────────────────────────────

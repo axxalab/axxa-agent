@@ -18,6 +18,7 @@
 //     contexto no 1º envio de um chat criado "dentro" do projeto.
 
 import { Notice, TFile } from "obsidian";
+import { esquecerRitmo } from "./cacheDoTurno";
 import type AxxaPlugin from "../main";
 import { useChatStore, type ChatMessage } from "../store/chat";
 import { getProvider } from "../providers";
@@ -99,6 +100,7 @@ export function mensagensParaGravar(msgs: readonly ChatMessage[]): ChatMessageSt
         ...(m.isError ? { isError: true } : {}),
         ...(m.reaction ? { reaction: m.reaction } : {}),
         ...(passos ? { agentSteps: passos } : {}),
+        ...(m.pedidoEm ? { pedidoEm: m.pedidoEm } : {}),
         ...(m.metaDesconhecida ? { metaDesconhecida: m.metaDesconhecida } : {}),
       });
     }
@@ -667,6 +669,9 @@ export class ChatSession {
     // Voltando pra conversa que está respondendo em segundo plano: ela não vem
     // do disco — o que vale é o que o turno já escreveu, que está na memória.
     if (store.background?.chatId === ref.id) {
+      // A conversa aberta grava ANTES: a gravação pendente dela (um like
+      // agora há pouco) leria a outra conversa e o like se perdia.
+      this.flushSave();
       this.reanexarTurno();
       this.plugin.clearChatUnread(ref.id);
       return;
@@ -698,6 +703,7 @@ export class ChatSession {
         ...(m.type === "user" && m.contexto ? { contexto: m.contexto } : {}),
         ...(m.type === "user" && m.resumo ? { resumo: m.resumo } : {}),
         ...(m.type === "ai-response" && m.isError ? { isError: true } : {}),
+        ...(m.type === "ai-response" && m.pedidoEm ? { pedidoEm: m.pedidoEm } : {}),
         ...(m.metaDesconhecida ? { metaDesconhecida: m.metaDesconhecida } : {}),
       }));
 
@@ -712,6 +718,9 @@ export class ChatSession {
       // (um like ou uma mensagem apagada logo depois de abrir não gravava).
       st.setCurrentChatId(chat.id);
       st.setMessages(restored);
+      // Relida do disco: pode ter andado noutro aparelho — o ritmo do cache
+      // sai da última resposta dela, não do último pedido desta sessão.
+      esquecerRitmo(chat.id);
       st.setCurrentChatTitle(chat.title);
       st.lockSession(chat.provider, chat.model, chat.mode);
       st.resetUsage();

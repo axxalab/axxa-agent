@@ -55,6 +55,9 @@ export interface UserMessage extends BaseMessage {
 export interface AIResponseMessage extends BaseMessage {
   type: "ai-response";
   content: string;
+  /** Quando o pedido que gerou esta resposta saiu (o `timestamp` é o do 1º
+   *  token). O ritmo do cache conta daqui — ver core/cacheDoTurno. */
+  pedidoEm?: number;
   /** Reaction do user — persiste no .md, sobrevive a reload. */
   reaction?: "like" | "dislike" | null;
   /** True quando essa "resposta" é uma mensagem de erro do sistema (rate limit,

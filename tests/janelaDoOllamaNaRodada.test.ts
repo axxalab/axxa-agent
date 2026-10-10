@@ -22,13 +22,31 @@ const rodada = (): ProviderMessage[] => [
 const base = { model: "qwen3:8b", resposta: 2048, janela: 8192, inicioDaRodada: 2 };
 
 describe("Ollama: a janela conferida a cada passo da rodada", () => {
-  it("passou do limiar: os resultados antigos encolhem, os 2 últimos ficam inteiros", () => {
+  it("passou do limiar: os resultados antigos encolhem; os 2 últimos lidos e o que ele ainda não leu ficam inteiros", () => {
     const h = rodada();
-    expect(conferirJanelaDoOllama({ ...base, providerId: "ollama", history: h })).toBe(2);
+    // o resultado 4 veio DEPOIS da última fala do modelo: ele ainda não leu
+    expect(conferirJanelaDoOllama({ ...base, providerId: "ollama", history: h })).toBe(1);
     expect(h[3].content.length).toBeLessThan(1200);
-    expect(h[5].content.length).toBeLessThan(1200);
+    expect(h[5].content).toHaveLength(6000);
     expect(h[7].content).toHaveLength(6000);
     expect(h[9].content).toHaveLength(6000);
+  });
+
+  it("chamadas em paralelo no último passo: nenhum dos resultados novos encolhe", () => {
+    const h: ProviderMessage[] = [
+      ...rodada().slice(0, 6),
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [5, 6, 7, 8].map((n) => ({ id: `c${n}`, name: "vault_read", arguments: {} })),
+      },
+      resultado(5),
+      resultado(6),
+      resultado(7),
+      resultado(8),
+    ];
+    conferirJanelaDoOllama({ ...base, providerId: "ollama", history: h });
+    for (const i of [7, 8, 9, 10]) expect(h[i].content).toHaveLength(6000);
   });
 
   it("cabe: nada muda", () => {

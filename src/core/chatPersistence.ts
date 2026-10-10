@@ -39,10 +39,12 @@ export interface ChatMessageStored {
    *  ("chave=valor"). Voltam iguais ao gravar: o que uma versão mais nova pôs
    *  ali não some quando esta salva a conversa. */
   metaDesconhecida?: string[];
+  /** Resposta: quando o pedido que a gerou saiu (o ritmo do cache conta dele). */
+  pedidoEm?: number;
 }
 
 /** As chaves da linha de meta que esta versão lê (o resto volta como veio). */
-const CHAVES_DA_META = new Set(["ts", "reaction", "err", "ctx", "sum"]);
+const CHAVES_DA_META = new Set(["ts", "reaction", "err", "ctx", "sum", "req"]);
 
 /** Uma linha que é EXATAMENTE um cabeçalho de seção do arquivo. Dentro de uma
  *  mensagem ela vai escapada (\## You), senão ao reabrir partia a mensagem. */
@@ -241,6 +243,7 @@ function renderBody(chat: ChatData): string {
       // (sobrevive ao parse manual + invisivel em qualquer render)
       const meta: string[] = [];
       if (m.timestamp) meta.push(`ts=${m.timestamp}`);
+      if (m.pedidoEm) meta.push(`req=${m.pedidoEm}`);
       if (m.reaction) meta.push(`reaction=${m.reaction}`);
       if (m.isError) meta.push("err=1");
       // O contexto da mensagem (vault + notas), em base64: invisível no
@@ -274,12 +277,14 @@ function parseMessageMeta(content: string): {
   contexto?: string;
   resumo?: string;
   metaDesconhecida?: string[];
+  pedidoEm?: number;
 } {
   const match = content.match(/^\s*<!--\s*axxa:\s*([^>]+?)\s*-->\s*\n?/);
   if (!match) return { cleanContent: content };
   const meta = match[1];
   const cleanContent = content.slice(match[0].length);
   let timestamp: number | undefined;
+  let pedidoEm: number | undefined;
   let reaction: "like" | "dislike" | null | undefined;
   let erro: boolean | undefined;
   let contexto: string | undefined;
@@ -290,6 +295,10 @@ function parseMessageMeta(content: string): {
     const k = corte < 0 ? part : part.slice(0, corte);
     const v = corte < 0 ? "" : part.slice(corte + 1);
     if (k === "ts" && v) timestamp = parseInt(v, 10);
+    else if (k === "req" && v) {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n)) pedidoEm = n;
+    }
     else if (k === "reaction" && (v === "like" || v === "dislike")) {
       reaction = v;
     } else if (k === "err" && v === "1") erro = true;
@@ -317,6 +326,7 @@ function parseMessageMeta(content: string): {
     erro,
     contexto,
     resumo,
+    ...(pedidoEm !== undefined ? { pedidoEm } : {}),
     ...(desconhecida.length > 0 ? { metaDesconhecida: desconhecida } : {}),
   };
 }
@@ -455,7 +465,7 @@ function parseBody(body: string): ChatMessageStored[] {
       next ? next.headingStart : body.length
     );
     // Extrai metadata (timestamp + reaction) da linha HTML comment
-    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta, resumo, metaDesconhecida } = parseMessageMeta(
+    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta, resumo, metaDesconhecida, pedidoEm } = parseMessageMeta(
       rawContent.trim()
     );
     // Extrai as ações do agent (comentário base64) e tira do conteúdo visível.
@@ -475,6 +485,7 @@ function parseBody(body: string): ChatMessageStored[] {
       ...(contexto && cur.type === "user" ? { contexto } : {}),
       ...(resumo && cur.type === "user" ? { resumo } : {}),
       ...(erro && cur.type === "ai-response" ? { isError: true } : {}),
+      ...(pedidoEm !== undefined && cur.type === "ai-response" ? { pedidoEm } : {}),
       ...(metaDesconhecida ? { metaDesconhecida } : {}),
     });
   }

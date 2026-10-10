@@ -48,12 +48,26 @@ export function ttlDoTurno(p: {
 /** O último pedido de cada conversa nesta sessão: quando e com que duração. */
 const ultimos = new Map<string, { quando: number; ttl: TtlDoCache }>();
 
-/** A última resposta da conversa — o "último pedido" de uma conversa que a
- *  sessão não viu pedir (reaberta, ou o plugin recarregado). */
-function ultimaResposta(msgs: readonly { type: string; timestamp?: number }[]): number | null {
+/** Uma mensagem como o ritmo lê: o tipo e quando. */
+interface MensagemComHora {
+  type: string;
+  timestamp?: number;
+  /** Resposta: quando o PEDIDO que a gerou saiu (o relógio do cache conta
+   *  dele; o timestamp é o do 1º token, que num modelo que pensa vem minutos
+   *  depois). */
+  pedidoEm?: number;
+  /** Bolha de erro: não diz nada do cache (o pedido pode nem ter chegado). */
+  isError?: boolean;
+}
+
+/** O começo do último pedido da conversa, pela última resposta — pra conversa
+ *  que a sessão não viu pedir (reaberta, ou o plugin recarregado). */
+function ultimaResposta(msgs: readonly MensagemComHora[]): number | null {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i];
-    if (m.type === "ai-response" && typeof m.timestamp === "number") return m.timestamp;
+    if (m.type !== "ai-response" || m.isError) continue;
+    if (typeof m.pedidoEm === "number") return m.pedidoEm;
+    if (typeof m.timestamp === "number") return m.timestamp;
   }
   return null;
 }
@@ -64,7 +78,7 @@ export function ttlParaOTurno(p: {
   provider: string;
   modo: "chat" | "agent";
   agora: number;
-  mensagens: readonly { type: string; timestamp?: number }[];
+  mensagens: readonly MensagemComHora[];
 }): TtlDoCache {
   const ultimo = p.chatId ? ultimos.get(p.chatId) : undefined;
   const quando = ultimo?.quando ?? ultimaResposta(p.mensagens);
@@ -76,9 +90,20 @@ export function ttlParaOTurno(p: {
   });
 }
 
-/** Anota um pedido da conversa (o relógio do cache começa nele). */
+/** Anota um pedido da conversa que CHEGOU ao provider (o relógio do cache
+ *  começa nele; o recusado antes — 429, limite de gasto, rede — não tocou no
+ *  cache e não conta). `quando` é o começo do pedido. */
 export function anotarPedido(chatId: string | null, ttl: TtlDoCache, quando: number): void {
   if (chatId) ultimos.set(chatId, { quando, ttl });
+}
+
+/**
+ * Esquece o ritmo anotado de uma conversa. A conversa relida do disco pode ter
+ * andado noutro aparelho (o arquivo sincroniza): o que vale é a última
+ * resposta DELA, não o último pedido que esta sessão fez.
+ */
+export function esquecerRitmo(chatId: string): void {
+  ultimos.delete(chatId);
 }
 
 /** Só pros testes: esquece o que a sessão anotou. */
