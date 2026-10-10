@@ -84,6 +84,7 @@ function lancamentoDe(u: Usage | undefined): Partial<Lancamento> {
   const l: Partial<Lancamento> = { r: 1, i: u?.input ?? 0, o: u?.output ?? 0 };
   if (u?.cacheRead) l.c = u.cacheRead;
   if (u?.cacheWrite) l.w = u.cacheWrite;
+  if (u?.cacheWrite1h) l.w1h = u.cacheWrite1h;
   return l;
 }
 

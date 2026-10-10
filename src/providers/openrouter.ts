@@ -16,6 +16,7 @@ import {
   ProviderRequest,
   ProviderResponse,
   TokenHandler,
+  Usage,
   UsageHandler,
 } from "./base";
 import { isEmbeddingModelId } from "../rag/types";
@@ -121,8 +122,18 @@ export function aplicarCache(
 ): Record<string, unknown> {
   if (!req.cacheKey) return body;
   body.session_id = req.cacheKey.slice(0, 256);
-  if (/^~?anthropic\//.test(req.model)) body.cache_control = { type: "ephemeral" };
+  const ttl = req.cacheTtl ?? "5m";
+  if (ttl !== "off" && /^~?anthropic\//.test(req.model)) {
+    body.cache_control = ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+  }
   return body;
+}
+
+/** O OpenRouter conta o gravado sem dizer a duração: se o pedido mandou só
+ *  a marca de 1 h, tudo o que gravou foi de 1 h. */
+function comUmaHora(u: Usage | undefined, req: ProviderRequest): Usage | undefined {
+  if (!u?.cacheWrite || !req.cacheKey || req.cacheTtl !== "1h") return u;
+  return { ...u, cacheWrite1h: u.cacheWrite };
 }
 
 export class OpenRouterProvider implements Provider {
@@ -167,7 +178,7 @@ export class OpenRouterProvider implements Provider {
     }
     // v0.1.228: propaga reasoning (DeepSeek R1 & afins expõem reasoning_content
     // em non-stream); antes era descartado aqui.
-    return { content, toolCalls, usage: usageFrom(corpo ?? {}), reasoning };
+    return { content, toolCalls, usage: comUmaHora(usageFrom(corpo ?? {}), req), reasoning };
   }
 
   async streamChat(
@@ -220,7 +231,14 @@ export class OpenRouterProvider implements Provider {
     await ensureOkStream(res, { label: "OpenRouter" });
     if (!res.body) throw new ProviderError("Empty stream.", "unknown");
 
-    return parseOpenAICompatSSE(res.body, onToken, onUsage, "openrouter_call", onReasoning);
+    const resp = await parseOpenAICompatSSE(
+      res.body,
+      onToken,
+      onUsage ? (u) => onUsage(comUmaHora(u, req) ?? u) : undefined,
+      "openrouter_call",
+      onReasoning
+    );
+    return { ...resp, usage: comUmaHora(resp.usage, req) };
   }
 
   /** Lista modelos modernos do OpenRouter (sem free/auto/etc) */

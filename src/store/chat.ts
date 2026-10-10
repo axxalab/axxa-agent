@@ -184,6 +184,8 @@ export interface BackgroundRun {
   tokensOut: number;
   tokensCached: number;
   tokensCacheWrite: number;
+  /** Do gravado, o de 1 hora (ausente: 0). */
+  tokensCacheWrite1h?: number;
   /** O que é DA CONVERSA e vai junto com o turno: sem isto, a gravação em
    *  segundo plano apagava do arquivo as instruções do projeto (e a persona,
    *  a estrela, o interruptor das notas), e o turno lia as da conversa que
@@ -200,6 +202,7 @@ export interface UsoDoPedido {
   output: number;
   cacheRead?: number;
   cacheWrite?: number;
+  cacheWrite1h?: number;
 }
 
 interface ChatState {
@@ -214,6 +217,8 @@ interface ChatState {
   /** Do tokensIn, quanto veio do cache de prompt / foi gravado nele. */
   tokensCached: number;
   tokensCacheWrite: number;
+  /** Do gravado, o de 1 hora (custa 2× a entrada; o de 5 min, 1,25×). */
+  tokensCacheWrite1h: number;
   /** Última snapshot de prompt_tokens (usado pra estimar "contexto usado") */
   lastPromptTokens: number;
   /** Id da mensagem que tá sendo streamada agora (pra esconder footer durante stream). */
@@ -358,6 +363,7 @@ interface ChatState {
     tokensOut: number;
     tokensCached?: number;
     tokensCacheWrite?: number;
+    tokensCacheWrite1h?: number;
   }) => void;
   resetUsage: () => void;
   setStreamingMessageId: (id: string | null) => void;
@@ -438,6 +444,7 @@ const BASE_RESET = {
   tokensOut: 0,
   tokensCached: 0,
   tokensCacheWrite: 0,
+  tokensCacheWrite1h: 0,
   lastPromptTokens: 0,
   streamingMessageId: null as string | null,
   sessionProvider: null as string | null,
@@ -461,6 +468,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   tokensOut: 0,
   tokensCached: 0,
   tokensCacheWrite: 0,
+  tokensCacheWrite1h: 0,
   lastPromptTokens: 0,
   streamingMessageId: null,
   streamStartedAt: null,
@@ -722,6 +730,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       const lido = uso.cacheRead ?? 0;
       const gravado = uso.cacheWrite ?? 0;
+      const gravado1h = uso.cacheWrite1h ?? 0;
       const bg = state.background;
       const conhecido = typeof dono === "string" && dono !== "";
       const praFundo = bg && (!conhecido || bg.chatId === dono);
@@ -741,6 +750,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             tokensOut: bg.tokensOut + uso.output,
             tokensCached: (bg.tokensCached ?? 0) + lido,
             tokensCacheWrite: (bg.tokensCacheWrite ?? 0) + gravado,
+            tokensCacheWrite1h: (bg.tokensCacheWrite1h ?? 0) + gravado1h,
           },
         };
       }
@@ -749,6 +759,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         tokensOut: state.tokensOut + uso.output,
         tokensCached: state.tokensCached + lido,
         tokensCacheWrite: state.tokensCacheWrite + gravado,
+        tokensCacheWrite1h: state.tokensCacheWrite1h + gravado1h,
         lastPromptTokens: uso.input > 0 ? uso.input : state.lastPromptTokens,
       };
     }),
@@ -758,9 +769,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tokensOut: t.tokensOut,
       tokensCached: t.tokensCached ?? 0,
       tokensCacheWrite: t.tokensCacheWrite ?? 0,
+      tokensCacheWrite1h: t.tokensCacheWrite1h ?? 0,
     }),
   resetUsage: () =>
-    set({ tokensIn: 0, tokensOut: 0, tokensCached: 0, tokensCacheWrite: 0, lastPromptTokens: 0 }),
+    set({
+      tokensIn: 0,
+      tokensOut: 0,
+      tokensCached: 0,
+      tokensCacheWrite: 0,
+      tokensCacheWrite1h: 0,
+      lastPromptTokens: 0,
+    }),
   setStreamingMessageId: (id) => set({ streamingMessageId: id }),
   startStreamTimer: () =>
     set({ streamStartedAt: Date.now(), streamTokens: 0, tokensPerSec: 0 }),

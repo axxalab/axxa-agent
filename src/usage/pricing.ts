@@ -27,6 +27,9 @@ export interface ModelPricing {
   /** USD por 1M tokens GRAVADOS no cache (Anthropic: escrita de 5 min;
    *  OpenAI GPT-5.6+). Ausente = a entrada cheia. */
   cacheWritePerMillion?: number;
+  /** USD por 1M tokens gravados pra durar 1 HORA (só a Anthropic tem).
+   *  Ausente = 2× a entrada, a regra de todo Claude. */
+  cacheWrite1hPerMillion?: number;
   /** Pra image gen: USD por imagem (size 1024x1024). */
   imagePerCall?: number;
   /** Pra TTS: USD por 1M caracteres input. */
@@ -313,8 +316,9 @@ export function calculateCost(
   tokensOut: number,
   imageCount = 0,
   charCount = 0,
-  /** Do tokensIn, o lido do cache e o gravado nele (cada um com o seu preço). */
-  cache: { lido?: number; gravado?: number } = {}
+  /** Do tokensIn, o lido do cache e o gravado nele (cada um com o seu
+   *  preço); `gravado1h` é o pedaço do gravado que dura 1 hora. */
+  cache: { lido?: number; gravado?: number; gravado1h?: number } = {}
 ): number | null {
   let cost = 0;
   let hasAnyKnown = false;
@@ -322,11 +326,13 @@ export function calculateCost(
   if (pricing.inputPerMillion != null && tokensIn > 0) {
     const lido = Math.min(cache.lido ?? 0, tokensIn);
     const gravado = Math.min(cache.gravado ?? 0, tokensIn - lido);
+    const gravado1h = Math.min(cache.gravado1h ?? 0, gravado);
     const cheio = tokensIn - lido - gravado;
     cost +=
       (cheio * pricing.inputPerMillion +
         lido * (pricing.cachedInputPerMillion ?? pricing.inputPerMillion) +
-        gravado * (pricing.cacheWritePerMillion ?? pricing.inputPerMillion)) /
+        (gravado - gravado1h) * (pricing.cacheWritePerMillion ?? pricing.inputPerMillion) +
+        gravado1h * (pricing.cacheWrite1hPerMillion ?? 2 * pricing.inputPerMillion)) /
       1_000_000;
     hasAnyKnown = true;
   } else if (tokensIn > 0) {

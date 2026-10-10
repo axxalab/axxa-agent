@@ -93,6 +93,13 @@ export interface ProviderRequest {
    *  vez de pagar o histórico inteiro de novo. Sem ela (títulos, assistente,
    *  pedido avulso), nada é gravado: gravar custa mais e ninguém relê. */
   cacheKey?: string;
+  /** Quanto o cache gravado por este pedido dura (Anthropic; o OpenRouter nos
+   *  Claude). Ausente = 5 min. "1h" custa 2× a entrada pra gravar (5 min:
+   *  1,25×) e serve à conversa com pausas; "off" não grava nada (a conversa
+   *  parada há mais de 1 h — gravar de novo sairia mais caro que mandar
+   *  cheio). Escolhido pelo ritmo da conversa: ver core/cacheDoTurno. Só vale
+   *  com cacheKey. */
+  cacheTtl?: "5m" | "1h" | "off";
   /** O teto DURO da resposta: o que ainda cabe na janela junto com o pedido
    *  (ver core/compactacao). Vale depois de tudo — inclusive do piso que os
    *  modelos que pensam ganham, que sem isto passava da janela. */
@@ -126,6 +133,9 @@ export interface Usage {
   /** Do `input`, quanto o provider GRAVOU no cache (Anthropic e GPT-5.6+
    *  cobram mais por isso). */
   cacheWrite?: number;
+  /** Do `cacheWrite`, quanto foi gravado pra durar 1 hora (Anthropic: 2× a
+   *  entrada, contra 1,25× da de 5 min). Um pedaço — nunca somado de novo. */
+  cacheWrite1h?: number;
 }
 
 /** Callback opcional pra receber usage quando o provider informar. */

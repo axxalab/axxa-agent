@@ -115,9 +115,11 @@ function summaryToRow(s: ChatSummary, pricingCache?: Map<string, ModelPricing>):
   const tokensOut = Number.isFinite(s.tokensOut) ? s.tokensOut : 0;
   const tokensCached = Number.isFinite(s.tokensCached) ? (s.tokensCached ?? 0) : 0;
   const gravado = Number.isFinite(s.tokensCacheWrite) ? (s.tokensCacheWrite ?? 0) : 0;
+  const gravado1h = Number.isFinite(s.tokensCacheWrite1h) ? (s.tokensCacheWrite1h ?? 0) : 0;
   const cost = calculateCost(pricing, tokensIn, tokensOut, 0, 0, {
     lido: tokensCached,
     gravado,
+    gravado1h,
   });
   // O mesmo pedido, todo pelo preço cheio de entrada: a diferença é o que o
   // cache poupou.

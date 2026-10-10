@@ -99,11 +99,18 @@ interface AnthropicTool {
   input_schema: object;
 }
 
-/** O único tipo que a Anthropic tem: dura 5 min, renovados a cada leitura. */
+/** O único tipo que a Anthropic tem. Sem `ttl` dura 5 min; com "1h", uma
+ *  hora — os dois renovados a cada leitura. */
 interface CacheControl {
   type: "ephemeral";
+  ttl?: "1h";
 }
-const EFEMERO: CacheControl = { type: "ephemeral" };
+
+/** A marca de cache com a duração pedida (5 min sai sem `ttl`: o corpo fica
+ *  igual ao de antes). */
+function marcaDeCache(ttl: "5m" | "1h"): CacheControl {
+  return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+}
 
 interface BlocoDoSistema {
   type: "text";
@@ -143,6 +150,8 @@ interface UsoAnthropic {
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  /** O gravado, por duração (o total é o cache_creation_input_tokens). */
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number } | null;
 }
 
 /**
@@ -150,7 +159,7 @@ interface UsoAnthropic {
  * que NÃO veio do cache: o prompt inteiro é ele + o lido + o gravado. Sem
  * somar, com o cache ligado, o painel e o teto de gasto contariam só a ponta.
  */
-function usoDaAnthropic(u: UsoAnthropic | undefined, saida = 0): Usage {
+function usoDaAnthropic(u: UsoAnthropic | undefined, saida = 0, todo1h = false): Usage {
   const lido = u?.cache_read_input_tokens ?? 0;
   const gravado = u?.cache_creation_input_tokens ?? 0;
   const usage: Usage = {
@@ -159,6 +168,11 @@ function usoDaAnthropic(u: UsoAnthropic | undefined, saida = 0): Usage {
   };
   if (u?.cache_read_input_tokens !== undefined) usage.cacheRead = lido;
   if (gravado > 0) usage.cacheWrite = gravado;
+  // O de 1 h é um PEDAÇO do gravado (2× a entrada, contra 1,25×). Sem o
+  // detalhe na resposta, o pedido que mandou 1 h gravou tudo em 1 h.
+  const umaHora = u?.cache_creation?.ephemeral_1h_input_tokens;
+  const gravado1h = typeof umaHora === "number" ? Math.min(umaHora, gravado) : todo1h ? gravado : 0;
+  if (gravado1h > 0) usage.cacheWrite1h = gravado1h;
   return usage;
 }
 
@@ -365,10 +379,14 @@ function buildBody(req: ProviderRequest, stream: boolean): AnthropicBody {
   // seguinte relê tudo até ali); e uma no fim do system, que guarda
   // ferramentas + instruções mesmo quando o histórico muda no meio (a mídia
   // antiga que vira menção, por exemplo). Prompt abaixo do mínimo do modelo
-  // (512 a 4.096 tokens) só não entra no cache — sem erro.
-  if (req.cacheKey) {
-    if (system) body.system = [{ type: "text", text: system, cache_control: EFEMERO }];
-    body.cache_control = EFEMERO;
+  // (512 a 4.096 tokens) só não entra no cache — sem erro. As duas marcas
+  // com a MESMA duração (a de 1 h antes da de 5 min é a regra; iguais, nunca
+  // dá 400). "off": nenhuma (ver ProviderRequest.cacheTtl).
+  const ttl = req.cacheTtl ?? "5m";
+  if (req.cacheKey && ttl !== "off") {
+    const marca = marcaDeCache(ttl);
+    if (system) body.system = [{ type: "text", text: system, cache_control: marca }];
+    body.cache_control = marca;
   }
   // Claude usa range 0..1 (paramPolicy clampa) — não 0..2 como a OpenAI — e
   // os atuais (Fable, Opus 4.7+, Sonnet 5+) não aceitam nenhuma: a política
@@ -456,7 +474,7 @@ export class AnthropicProvider implements Provider {
     if (toolCalls.length > 0) result.toolCalls = toolCalls;
 
     // Usage tokens
-    if (corpo?.usage) result.usage = usoDaAnthropic(corpo.usage);
+    if (corpo?.usage) result.usage = usoDaAnthropic(corpo.usage, 0, gravaUmaHora(req));
 
     return result;
   }
@@ -518,7 +536,8 @@ export class AnthropicProvider implements Provider {
     // delta e, em alguns formatos, só no stop.
     const entrada: UsoAnthropic = {};
     let outputTokens = 0;
-    const usoAgora = (): Usage => usoDaAnthropic({ ...entrada, output_tokens: outputTokens });
+    const usoAgora = (): Usage =>
+      usoDaAnthropic({ ...entrada, output_tokens: outputTokens }, 0, gravaUmaHora(req));
     const temUso = () => (entrada.input_tokens ?? 0) > 0 || outputTokens > 0;
     let accumulatedText = "";
     // Tool use accumulator por content_block_index
@@ -724,7 +743,25 @@ function campoDeEntrada(u: UsoAnthropic | undefined): UsoAnthropic {
   if (typeof u?.cache_creation_input_tokens === "number") {
     r.cache_creation_input_tokens = u.cache_creation_input_tokens;
   }
+  // O detalhe por duração vem junto (e é TROCADO a cada evento, nunca somado:
+  // o message_delta repete os totais corridos).
+  const porDuracao = u?.cache_creation;
+  if (porDuracao && typeof porDuracao === "object") {
+    const d: NonNullable<UsoAnthropic["cache_creation"]> = {};
+    if (typeof porDuracao.ephemeral_5m_input_tokens === "number") {
+      d.ephemeral_5m_input_tokens = porDuracao.ephemeral_5m_input_tokens;
+    }
+    if (typeof porDuracao.ephemeral_1h_input_tokens === "number") {
+      d.ephemeral_1h_input_tokens = porDuracao.ephemeral_1h_input_tokens;
+    }
+    r.cache_creation = d;
+  }
   return r;
+}
+
+/** O pedido gravou o cache pra durar 1 hora? */
+function gravaUmaHora(req: ProviderRequest): boolean {
+  return !!req.cacheKey && req.cacheTtl === "1h";
 }
 
 export const anthropicProvider = new AnthropicProvider();

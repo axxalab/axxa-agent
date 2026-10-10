@@ -33,6 +33,7 @@ import {
   type ResultadoDaJanela,
 } from "./compactacao";
 import { tokensDoPedido } from "../providers/ollama";
+import { anotarPedido, ttlParaOTurno } from "./cacheDoTurno";
 
 /** Ref mutável do AbortController do turno em andamento (null = ocioso). */
 export interface AbortRef {
@@ -194,6 +195,15 @@ export async function streamReply(
     // A conversa DESTE pedido (o uso vai pra ela mesmo que você troque de
     // conversa no meio, ou ela vá pro segundo plano).
     const donoDoPedido = useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+    // Quanto o cache deste turno dura: pelo ritmo da conversa (ver
+    // core/cacheDoTurno — com pausas, 1 h; parada há mais de 1 h, nada).
+    const ttlDoCache = ttlParaOTurno({
+      chatId: donoDoPedido,
+      provider: activeProviderId,
+      modo: "chat",
+      agora: Date.now(),
+      mensagens: estadoDoTurno().mensagens,
+    });
 
     // A conversa cabe na janela do modelo? Se não, o começo vira resumo (ver
     // core/compactacao) — o "Pensando…" diz "Resumindo…" enquanto isso. Com
@@ -237,6 +247,7 @@ export async function streamReply(
         tetoDaJanela
       );
       let ultimoUso: Usage | null = null;
+      anotarPedido(donoDoPedido, ttlDoCache, Date.now());
       startStreamTimer();
       try {
         await activeProvider.streamChat(
@@ -248,6 +259,7 @@ export async function streamReply(
             temperature: effortCfg.temperature,
             effort: isEffortLevel(effort) ? effort : undefined,
             cacheKey: chaveDeCache(donoDoPedido),
+            cacheTtl: ttlDoCache,
           },
           apiKey,
           (token) => {

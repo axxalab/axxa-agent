@@ -26,6 +26,8 @@ export interface Preco {
   cache?: number;
   /** A entrada gravada no cache (Anthropic, GPT-5.6+). Sem preço, a cheia. */
   escrita?: number;
+  /** A gravada pra durar 1 hora (Anthropic). Sem preço, 2× a entrada. */
+  escrita1h?: number;
 }
 
 /**
@@ -39,6 +41,7 @@ export function precoConhecido(provider: string, model: string): Preco | null {
     const preco: Preco = { entrada: p.inputPerMillion, saida: p.outputPerMillion };
     if (p.cachedInputPerMillion != null) preco.cache = p.cachedInputPerMillion;
     if (p.cacheWritePerMillion != null) preco.escrita = p.cacheWritePerMillion;
+    if (p.cacheWrite1hPerMillion != null) preco.escrita1h = p.cacheWrite1hPerMillion;
     return preco;
   }
   const emb = getAllEmbeddingModels().find((m) => m.model === model && !m.discovered);
@@ -89,16 +92,19 @@ export function gastoDesde(
  * preços cheios. (A entrada `i` é TODA a entrada; `c` e `w` são pedaços dela.)
  */
 export function custoDoLancamento(
-  l: { i: number; o: number; c?: number; w?: number },
+  l: { i: number; o: number; c?: number; w?: number; w1h?: number },
   p: Preco
 ): number {
   const lido = Math.min(l.c ?? 0, l.i);
   const gravado = Math.min(l.w ?? 0, l.i - lido);
+  // O de 1 h é um pedaço do gravado — cobrado uma vez só, pelo preço dele.
+  const gravado1h = Math.min(l.w1h ?? 0, gravado);
   const cheio = l.i - lido - gravado;
   return (
     (cheio * p.entrada +
       lido * (p.cache ?? p.entrada) +
-      gravado * (p.escrita ?? p.entrada) +
+      (gravado - gravado1h) * (p.escrita ?? p.entrada) +
+      gravado1h * (p.escrita1h ?? 2 * p.entrada) +
       l.o * p.saida) /
     1_000_000
   );

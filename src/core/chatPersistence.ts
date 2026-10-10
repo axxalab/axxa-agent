@@ -77,6 +77,8 @@ export interface ChatData {
    *  Conversa antiga não tem: ausente é 0. */
   tokensCached?: number;
   tokensCacheWrite?: number;
+  /** Do gravado, o de 1 hora (custa mais). Ausente é 0. */
+  tokensCacheWrite1h?: number;
   /** Persona / system prompt custom do chat ("" ou ausente = prompt padrão). */
   persona?: string;
   /** Instruções do projeto onde a conversa nasceu. Ficam GRAVADAS na conversa,
@@ -112,6 +114,7 @@ export interface ChatSummary {
   tokensOut: number;
   tokensCached?: number;
   tokensCacheWrite?: number;
+  tokensCacheWrite1h?: number;
   messageCount: number;
   /** Quantas ações de tool a conversa rodou (o `tools_used` do frontmatter).
    *  É o que a home do Agent mostra em cada cartão — sem isto a lista de lá
@@ -216,7 +219,7 @@ model: ${yamlString(chat.model)}
 effort: ${yamlString(chat.effort)}
 ${chat.persona ? `persona: ${yamlString(chat.persona)}\n` : ""}${chat.instructions ? `instructions: ${yamlString(chat.instructions)}\n` : ""}${chat.starred ? "starred: true\n" : ""}${chat.vault === undefined ? "" : `vault: ${chat.vault}\n`}tokens_in: ${chat.tokensIn}
 tokens_out: ${chat.tokensOut}
-${chat.tokensCached ? `tokens_cached: ${chat.tokensCached}\n` : ""}${chat.tokensCacheWrite ? `tokens_cache_write: ${chat.tokensCacheWrite}\n` : ""}message_count: ${chat.messages.length}
+${chat.tokensCached ? `tokens_cached: ${chat.tokensCached}\n` : ""}${chat.tokensCacheWrite ? `tokens_cache_write: ${chat.tokensCacheWrite}\n` : ""}${chat.tokensCacheWrite1h ? `tokens_cache_write_1h: ${chat.tokensCacheWrite1h}\n` : ""}message_count: ${chat.messages.length}
 ${toolsBlock}tags:
 ${tags}
 ---`;
@@ -311,6 +314,7 @@ const NUMERIC_KEYS = new Set([
   "tokens_out",
   "tokens_cached",
   "tokens_cache_write",
+  "tokens_cache_write_1h",
   "message_count",
 ]);
 
@@ -495,6 +499,8 @@ export function parseChatMarkdown(content: string): ChatData {
     tokensOut: Number(fm.tokens_out ?? 0),
     tokensCached: fm.tokens_cached === undefined ? undefined : Number(fm.tokens_cached),
     tokensCacheWrite: fm.tokens_cache_write === undefined ? undefined : Number(fm.tokens_cache_write),
+    tokensCacheWrite1h:
+      fm.tokens_cache_write_1h === undefined ? undefined : Number(fm.tokens_cache_write_1h),
     messages,
   };
 }
@@ -545,6 +551,8 @@ export function summaryFromFrontmatter(
     tokensOut: Number(fm.tokens_out ?? 0),
     tokensCached: fm.tokens_cached === undefined ? undefined : Number(fm.tokens_cached),
     tokensCacheWrite: fm.tokens_cache_write === undefined ? undefined : Number(fm.tokens_cache_write),
+    tokensCacheWrite1h:
+      fm.tokens_cache_write_1h === undefined ? undefined : Number(fm.tokens_cache_write_1h),
     messageCount: Number(fm.message_count ?? 0),
     toolCount: Array.isArray(fm.tools_used) ? fm.tools_used.length : 0,
     filePath,

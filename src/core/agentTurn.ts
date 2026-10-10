@@ -52,6 +52,7 @@ import {
   type ResultadoDaJanela,
 } from "./compactacao";
 import { tokensDoPedido } from "../providers/ollama";
+import { anotarPedido, ttlParaOTurno } from "./cacheDoTurno";
 
 export interface AgentCtx extends EngineCtx {
   /** "Aprovar todas" da rodada — resetado a cada turno. */
@@ -196,6 +197,15 @@ export async function runAgentTurn(
   const apiKey = apiKeyFor(activeProviderId);
   const donoDaRodada =
     useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+  // Quanto o cache da rodada dura: pelo ritmo da conversa, o MESMO em todos
+  // os passos (ver core/cacheDoTurno).
+  const ttlDoCache = ttlParaOTurno({
+    chatId: donoDaRodada,
+    provider: activeProviderId,
+    modo: "agent",
+    agora: Date.now(),
+    mensagens: estadoDoTurno().mensagens,
+  });
   const maxTokensDoNivel = effortToMaxTokensSmart(
     effort,
     getContextWindow(activeModel),
@@ -300,6 +310,7 @@ export async function runAgentTurn(
         tokensDoPedido({ model: activeModel, messages: history, tools })
       );
       let response;
+      anotarPedido(donoDaRodada, ttlDoCache, Date.now());
       try {
         response = await activeProvider.streamChat(
           {
@@ -311,6 +322,7 @@ export async function runAgentTurn(
             effort: isEffortLevel(effort) ? effort : undefined,
             tools,
             cacheKey: chaveDeCache(donoDoPedido),
+            cacheTtl: ttlDoCache,
           },
           apiKey,
           onToken,

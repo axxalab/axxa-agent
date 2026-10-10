@@ -23,6 +23,8 @@ export interface Lancamento {
   /** Da entrada, o que foi gravado no cache (Anthropic e GPT-5.6+ cobram
    *  mais por isso). */
   w?: number;
+  /** Do gravado, o que foi pra durar 1 hora (Anthropic: 2× a entrada). */
+  w1h?: number;
 }
 
 /** Soma `l` em `acc`, com os campos de cache só quando há o que somar. */
@@ -32,6 +34,7 @@ function somarEm(acc: Lancamento, l: Partial<Lancamento>): void {
   acc.o += l.o ?? 0;
   if (l.c) acc.c = (acc.c ?? 0) + l.c;
   if (l.w) acc.w = (acc.w ?? 0) + l.w;
+  if (l.w1h) acc.w1h = (acc.w1h ?? 0) + l.w1h;
 }
 
 /** Hora UTC ("2026-10-02T14") → "provider\u0001modelo" → o lançamento. */
