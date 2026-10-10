@@ -176,8 +176,10 @@ export const PT_USAGE: Record<string, string> = {
   "Paid only": "Só pago",
   "Your limits in AI Studio": "Seus limites no AI Studio",
   // O gasto do dia.
-  "Counted in this vault from public token prices. Gemini counts at paid prices, so a free-tier project may cost less.":
-    "Contado neste vault pelos preços públicos dos tokens. O Gemini entra pelo preço pago, então um projeto no plano grátis pode custar menos.",
+  "Counted in this vault from public token prices. Gemini counts at paid prices unless you mark your key as free tier in Settings › Providers › Gemini.":
+    "Contado neste vault pelos preços públicos dos tokens. O Gemini entra pelo preço pago, a menos que você marque a sua chave como plano grátis em Settings › Providers › Gemini.",
+  "Counted in this vault from public token prices. Your Gemini key is on the free tier, so Gemini models with a free tier count as $0.":
+    "Contado neste vault pelos preços públicos dos tokens. A sua chave do Gemini está no plano grátis, então os modelos do Gemini com plano grátis contam US$ 0.",
   "1 request on models without a public price isn't included.":
     "1 pedido em modelos sem preço público não entra na conta.",
   "{n} requests on models without a public price aren't included.":
@@ -218,6 +220,8 @@ export const PT_USAGE: Record<string, string> = {
     "{n} tokens por dia sem custo enquanto você compartilha dados da API com a OpenAI. Passando disso, este modelo é cobrado normalmente — e a cota conta TODO o seu uso da API da OpenAI, não só este vault.",
   "Turn on data sharing in OpenAI's Data controls to get {n} tokens a day here at no cost.":
     "Ligue o compartilhamento de dados nos Data controls da OpenAI pra ganhar {n} tokens por dia aqui, sem custo.",
+  "No cost: your Gemini key is on the free tier (a project without billing), within its rate limits. Google may use what you send to improve its products. The daily spending counts it as $0.":
+    "Sem custo: a sua chave do Gemini está no plano grátis (um projeto sem faturamento), dentro dos limites de uso. O Google pode usar o que você envia pra melhorar os produtos dele. O gasto do dia conta US$ 0.",
   "No cost on the Gemini API's free tier — a project without billing turned on, where Google may use what you send to improve its products — within its rate limits. With billing on, this model is charged.":
     "Sem custo no plano grátis da API do Gemini — um projeto sem faturamento ativado, em que o Google pode usar o que você envia pra melhorar os produtos dele — dentro dos limites de uso. Com o faturamento ativado, este modelo é cobrado.",
   "No cost. OpenRouter's free models share 20 requests a minute and {limit} a day on this key.":

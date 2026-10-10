@@ -175,6 +175,7 @@ export function LeftToday({ plugin }: { plugin: AxxaPlugin }) {
     chaveOpenRouter: viva,
     limiteGasto: s.limiteGastoDiario ?? 0,
     travarNoLimite: s.travarNoLimite === true,
+    geminiFreeTier: s.geminiFreeTier === true,
   });
   if (cartoes.length === 0) return null;
 

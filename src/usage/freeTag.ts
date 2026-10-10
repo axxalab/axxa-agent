@@ -106,6 +106,8 @@ export function freeTag(
     tier: number;
     /** A cota diária dos grátis na chave (OpenRouter), quando o fetch soube. */
     cota?: { limit: number; remaining?: number };
+    /** A chave do Gemini é do plano grátis (a pessoa disse nas settings). */
+    geminiFreeTier?: boolean;
   }
 ): FreeTag | null {
   const pool = provider === "openai" ? openaiFreeTierForModel(model) : null;
@@ -143,6 +145,16 @@ export function freeTag(
   // O Gemini decide pelo modelo e pela conta — não pelo "free" do motor.
   if (provider === "gemini") {
     if (!geminiTemTierGratis(model)) return null;
+    // A pessoa disse que a chave é do plano grátis: deixa de ser oferta.
+    if (opts.geminiFreeTier) {
+      return {
+        kind: "daily",
+        label: tr("free tier"),
+        detail: tr(
+          "No cost: your Gemini key is on the free tier (a project without billing), within its rate limits. Google may use what you send to improve its products. The daily spending counts it as $0."
+        ),
+      };
+    }
     return {
       kind: "offer",
       label: tr("free tier"),

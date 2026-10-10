@@ -26,6 +26,7 @@ const BOOL_KEYS = [
   "voiceEnabled",
   "ttsEnabled",
   "openaiDataSharing",
+  "geminiFreeTier",
   "agentDiffApproval",
   "agentWeb",
   "travarNoLimite",
@@ -90,6 +91,8 @@ export function readControl(s: AxxaSettings, key: ControlKey): boolean | string 
       return s.agentWeb !== false;
     case "travarNoLimite":
       return s.travarNoLimite === true;
+    case "geminiFreeTier":
+      return s.geminiFreeTier === true;
     case "language":
       return s.language || "en-us";
     // O menu fala string; o tier é número.

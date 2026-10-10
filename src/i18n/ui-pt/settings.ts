@@ -42,6 +42,10 @@ export const PT_SETTINGS: Record<string, string> = {
     "Usado quando este provedor está selecionado e nada mais foi escolhido.",
   "Free daily tokens": "Tokens grátis por dia",
   "I share API data with OpenAI": "Compartilho dados da API com a OpenAI",
+  "Free tier": "Plano grátis",
+  "My Gemini key is on the free tier": "Minha chave do Gemini está no plano grátis",
+  "Turn this on if the Google Cloud project behind your key has no billing. Gemini models with a free tier then count as $0 in the daily spending and Usage, and keep working when paid models pause at the limit. Leave it off if billing is on: those requests are charged.":
+    "Ligue se o projeto do Google Cloud da sua chave não tem faturamento. Aí os modelos do Gemini com plano grátis contam US$ 0 no gasto do dia e no Uso, e continuam funcionando quando os pagos param no limite. Deixe desligado se o faturamento está ativo: esses pedidos são cobrados.",
   "Their switch, in Data controls on platform.openai.com. Turning it on there gives your account a daily quota at no cost; telling us here is what makes this list show the real numbers.":
     "O interruptor é deles, em Data controls no platform.openai.com. Ligado lá, ele dá à sua conta uma cota diária sem custo; avisar aqui é o que faz esta lista mostrar os números reais.",
   "Usage tier": "Tier de uso",
@@ -78,8 +82,8 @@ export const PT_SETTINGS: Record<string, string> = {
   "In dollars, for paid models, counted from public token prices. You get a heads-up at 80% and at 100%. Empty means no limit.":
     "Em dólares, pros modelos pagos, contado pelos preços públicos dos tokens. Você recebe um aviso em 80% e em 100%. Vazio é sem limite.",
   "Stop paid models at the limit": "Parar os modelos pagos no limite",
-  "When today's spending reaches the limit, paid models pause until midnight. Free and local models keep working, and so do models without a public price.":
-    "Quando o gasto de hoje chega ao limite, os modelos pagos param até a meia-noite. Os grátis e os locais continuam funcionando, e os sem preço público também.",
+  "When today's spending reaches the limit, paid models pause until midnight. Free and local models keep working, and so do models without a public price. Gemini counts as paid unless you mark your key as free tier in Providers › Gemini.":
+    "Quando o gasto de hoje chega ao limite, os modelos pagos param até a meia-noite. Os grátis e os locais continuam funcionando, e os sem preço público também. O Gemini conta como pago, a menos que você marque a sua chave como plano grátis em Providers › Gemini.",
   Assistant: "Assistente",
   "Assistant model": "Modelo da assistente",
   Model: "Modelo",

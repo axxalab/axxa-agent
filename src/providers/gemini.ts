@@ -97,7 +97,19 @@ export function isGeminiBillingError(
     m.includes("billed users") ||
     m.includes("paid tier") ||
     m.includes("only available on the paid") ||
-    m.includes("only accessible to billed") ||
+    m.includes("only accessible to billed")
+  ) {
+    return true;
+  }
+  // No chat, o 429 de cota do Google SEMPRE cita "billing details" e a métrica
+  // do plano grátis (…free_tier_requests) — inclusive quando é só o teto do
+  // dia de quem usa o plano grátis. Cobrança é quando a cota grátis do modelo
+  // é ZERO ("limit: 0": o modelo não tem plano grátis); com teto acima de
+  // zero é limite de uso, e o aviso certo é "espere", não "ative a cobrança".
+  if (context === "chat" && status === 429) {
+    return /free[_ ]tier/.test(m) && /\blimit:\s*0\b/.test(m);
+  }
+  if (
     m.includes("billing") ||
     m.includes("failed_precondition") ||
     m.includes("free tier") ||

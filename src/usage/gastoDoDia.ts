@@ -9,8 +9,9 @@
 //   · modelo sem preço público não entra na soma, e a conta diz quantos
 //     pedidos ficaram de fora (a tela não promete um total que não tem);
 //   · o Gemini entra pelo preço PAGO: num projeto sem billing ele não custa
-//     nada, mas o plugin não tem como saber — e num orçamento, contar a mais
-//     é o erro seguro.
+//     nada, mas a API não conta — e num orçamento, contar a mais é o erro
+//     seguro. Quem diz que a chave é do plano grátis é a pessoa (Providers ›
+//     Gemini); aí os modelos com plano grátis valem zero (ver getPricing).
 
 import { getPricing } from "./pricing";
 import { getAllEmbeddingModels } from "../rag/types";

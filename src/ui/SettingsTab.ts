@@ -51,6 +51,7 @@ import { getAllEmbeddingModels } from "../rag/types";
 import { deleteIndex } from "../rag/vectorIndex";
 import { getModelCapabilities } from "../providers/modelCapabilities";
 import { freeTag, geminiTemTierGratis, gratisDeVerdade, type FreeTag } from "../usage/freeTag";
+import { definirGeminiSemCobranca } from "../usage/pricing";
 import { openaiFreeTierForModel } from "../usage/freeTokens";
 import { buildModelCatalog, porFabricante, soltosPorFabricante } from "./modelCatalog";
 import { PROVIDERS_MULTI_FABRICANTE } from "../providers/vendors";
@@ -276,6 +277,8 @@ export class AxxaSettingsTab extends PluginSettingTab {
     // O tato espelha a setting ANTES de gravar: o pulso de confirmação abaixo
     // já sai (ou não) conforme o que acabou de ser escolhido.
     if (key === "hapticsEnabled") setHapticsEnabled(value === true);
+    // O preço do Gemini segue a chave já na próxima conta (ver usage/pricing.ts).
+    if (key === "geminiFreeTier") definirGeminiSemCobranca(value === true);
     if (!(await writeControl(this.plugin, key, value))) return;
     switch (key) {
       case "chatsPath":
@@ -290,6 +293,10 @@ export class AxxaSettingsTab extends PluginSettingTab {
         break;
       case "language":
         this.retraduzir();
+        break;
+      case "geminiFreeTier":
+        // A etiqueta "free tier" dos modelos do Gemini passa de oferta a fato.
+        this.repaint("catalog:gemini");
         break;
       case "openaiDataSharing":
       case "openaiTier":
@@ -1157,6 +1164,7 @@ export class AxxaSettingsTab extends PluginSettingTab {
       dataSharing: this.s.openaiDataSharing === true,
       tier: this.s.openaiTier ?? 1,
       cota: this.s.freeQuota?.[providerId],
+      geminiFreeTier: this.s.geminiFreeTier === true,
     });
   }
 

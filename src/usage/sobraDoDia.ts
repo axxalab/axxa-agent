@@ -111,6 +111,8 @@ export interface EntradaDoDia {
   limiteGasto?: number;
   /** No limite, os modelos pagos param (senão, só avisa). */
   travarNoLimite?: boolean;
+  /** A chave do Gemini é do plano grátis (a pessoa disse nas settings). */
+  geminiFreeTier?: boolean;
 }
 
 const sobra = (limite: number | undefined, usado: number): number | undefined =>
@@ -169,7 +171,9 @@ export function sobraDoDia(e: EntradaDoDia): Cartao[] {
         },
       ],
       nota: [
-        tr("Counted in this vault from public token prices. Gemini counts at paid prices, so a free-tier project may cost less."),
+        e.geminiFreeTier
+          ? tr("Counted in this vault from public token prices. Your Gemini key is on the free tier, so Gemini models with a free tier count as $0.")
+          : tr("Counted in this vault from public token prices. Gemini counts at paid prices unless you mark your key as free tier in Settings › Providers › Gemini."),
         gasto.semPreco > 0
           ? gasto.semPreco === 1
             ? tr("1 request on models without a public price isn't included.")

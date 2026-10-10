@@ -450,6 +450,22 @@ export function buildSettingsTree(ui: SettingsUi): SettingsTree {
       ]);
     }
 
+    // O plano da chave do Gemini: a API não conta se o projeto tem cobrança,
+    // e sem isso o gasto do dia conta o grátis pelo preço pago (ver
+    // usage/pricing.ts).
+    if (p.id === "gemini") {
+      group(at, { heading: tr("Free tier") }, [
+        toggle(
+          tr("My Gemini key is on the free tier"),
+          tr(
+            "Turn this on if the Google Cloud project behind your key has no billing. Gemini models with a free tier then count as $0 in the daily spending and Usage, and keep working when paid models pause at the limit. Leave it off if billing is on: those requests are charged."
+          ),
+          "geminiFreeTier",
+          { aliases: ["free", "grátis", "billing", "cobrança", "tier", "budget", "orçamento"] }
+        ),
+      ]);
+    }
+
     // Sem título: um "Models" por provider repetiria a chave do grupo. A
     // primeira linha já diz o que é o cartão.
     group(at, {}, [
@@ -569,7 +585,7 @@ export function buildSettingsTree(ui: SettingsUi): SettingsTree {
     toggle(
       tr("Stop paid models at the limit"),
       tr(
-        "When today's spending reaches the limit, paid models pause until midnight. Free and local models keep working, and so do models without a public price."
+        "When today's spending reaches the limit, paid models pause until midnight. Free and local models keep working, and so do models without a public price. Gemini counts as paid unless you mark your key as free tier in Providers › Gemini."
       ),
       "travarNoLimite",
       { aliases: ["budget", "orçamento", "travar", "pause", "block"] }

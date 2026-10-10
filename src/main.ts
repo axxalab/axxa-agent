@@ -47,10 +47,11 @@ import {
   listaDeFabrica,
   revisarOllamaPadrao,
 } from "./core/ollamaPadrao";
-import { definirGratisConhecidos } from "./usage/pricing";
+import { definirGeminiSemCobranca, definirGratisConhecidos } from "./usage/pricing";
 import { lancar, podar, type Lancamento, type LivroDoDia } from "./usage/livroDoDia";
 import { definirAnotadorDeUso, definirGuardaDeGasto } from "./usage/anotador";
 import { ehPago, gastoDeHoje, marcosCruzados, usd } from "./usage/gastoDoDia";
+import { geminiTemTierGratis } from "./usage/freeTag";
 import { ProviderError } from "./providers/base";
 import { esquecerDesfazeres } from "./agent/undo";
 import { registrarComandosDoEditor } from "./editor/comandos";
@@ -148,6 +149,11 @@ export interface AxxaSettings {
   /** Usage tier da conta OpenAI (1–5). A cota diária dobra e quadruplica com
    *  ele (250k/2.5M nos tiers 1–2; 1M/10M do 3 em diante). */
   openaiTier: number;
+  /** A chave do Gemini é de um projeto sem cobrança (o plano grátis)? A API
+   *  não conta; ligado, os modelos com plano grátis valem zero no gasto do
+   *  dia e não param no limite (ver usage/pricing.ts). Desligado de fábrica:
+   *  ligado por engano numa conta paga, o gasto real passaria do limite. */
+  geminiFreeTier: boolean;
   /** Último teste de conexão por provider (Settings → Test). Persiste porque
    *  quem precisa do resultado é o CHAT: ele não vai testar sozinho na hora de
    *  abrir a folha de modelos. */
@@ -293,6 +299,7 @@ const DEFAULT_SETTINGS: AxxaSettings = {
   // Desligado e tier 1: o padrão é o que a conta nova TEM, não o melhor caso.
   openaiDataSharing: false,
   openaiTier: 1,
+  geminiFreeTier: false,
   providerStatus: {},
   voiceEnabled: true,
   voiceModel: "gpt-4o-mini-transcribe",
@@ -1249,13 +1256,20 @@ export default class AxxaPlugin extends Plugin {
     if (!(limite > 0) || !s.travarNoLimite || !ehPago(provider, model)) return;
     const { total } = gastoDeHoje(s.usoDoDia ?? {}, new Date());
     if (total < limite) return;
-    throw new ProviderError(
-      tr(
-        "Today's {limit} spending limit is reached ({spent} spent), so paid models are paused until midnight. Free and local models still work, or raise the limit in Settings › Chat › Daily spending.",
-        { limit: usd(limite), spent: usd(total) }
-      ),
-      "unknown"
+    const aviso = tr(
+      "Today's {limit} spending limit is reached ({spent} spent), so paid models are paused until midnight. Free and local models still work, or raise the limit in Settings › Chat › Daily spending.",
+      { limit: usd(limite), spent: usd(total) }
     );
+    // O Gemini do plano grátis só conta como pago porque a API não diz qual é
+    // o plano da chave: o aviso aponta onde dizer.
+    const dica =
+      provider === "gemini" && geminiTemTierGratis(model)
+        ? " " +
+          tr(
+            "If your Gemini key's project has no billing, turn on “My Gemini key is on the free tier” in Settings › Providers › Gemini."
+          )
+        : "";
+    throw new ProviderError(aviso + dica, "unknown");
   }
 
   onunload() {
@@ -1542,6 +1556,9 @@ export default class AxxaPlugin extends Plugin {
     limparCamposMortos(this.settings);
     // Same pra effortConfigs — preserva overrides salvos do usuário.
     this.settings.effortConfigs = saved.effortConfigs ?? {};
+
+    // O preço do Gemini segue a chave (plano grátis ou pago) — ver pricing.ts.
+    definirGeminiSemCobranca(this.settings.geminiFreeTier === true);
 
     // Chaves de API: carrega do SecretStorage do SO (keychain), não do
     // data.json. Migra chaves legadas que ainda estejam em plaintext.

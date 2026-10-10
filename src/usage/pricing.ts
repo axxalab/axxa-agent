@@ -9,8 +9,12 @@
 //   - Fonte principal: tabelas oficiais de cada provider + LiteLLM JSON
 //     (https://github.com/BerriAI/litellm/blob/main/litellm/model_prices_and_context_window_backup.json)
 //
-// Free models (gemini free tier, openrouter :free, ollama local) = 0.
+// Free models (openrouter :free, ollama local) = 0. Gemini: o preço PAGO —
+// menos quando a pessoa diz que a chave é do plano grátis (ver
+// definirGeminiSemCobranca).
 // Generation models têm preço por imagem ou por minuto de áudio em vez de tokens.
+
+import { geminiTemTierGratis } from "./freeTag";
 
 export interface ModelPricing {
   /** USD por 1M tokens de input. null = desconhecido. */
@@ -133,7 +137,8 @@ const PRICES_BY_PROVIDER: Record<string, PricingEntry[]> = {
 
   // ─────────────────────────────── Gemini ────────────────────────────────
   // Fonte: ai.google.dev/gemini-api/docs/pricing (out/2026), preço PAGO (no
-  // orçamento, contar a mais é o erro seguro). Cache = preço de contexto em
+  // orçamento, contar a mais é o erro seguro — a menos que a pessoa diga que a
+  // chave é do plano grátis; ver definirGeminiSemCobranca). Cache = preço de contexto em
   // cache, sem o armazenamento. 3.6/3.7/3.8 Flash: promoção até 2026-12-31
   // (depois $1,50 / $0,15 de cache).
   gemini: [
@@ -218,6 +223,19 @@ export function definirGratisConhecidos(provider: string, ids: readonly string[]
   gratisConhecidos.set(provider, new Set(ids.map(normalizado)));
 }
 
+/**
+ * A chave do Gemini é de um projeto SEM cobrança (o plano grátis)? A API não
+ * conta — quem diz é a pessoa, nas settings (Providers › Gemini). Ligado, os
+ * modelos que têm plano grátis custam zero: no gasto do dia, na trava do
+ * limite e na página de uso. Os que são só pagos continuam pagos, e o
+ * OpenRouter (google/…) não muda — lá quem cobra é o OpenRouter.
+ */
+let geminiSemCobranca = false;
+
+export function definirGeminiSemCobranca(ligado: boolean): void {
+  geminiSemCobranca = ligado;
+}
+
 /** O preço de um id do OpenRouter na tabela do fabricante (ou null). */
 function precoDeOrigem(id: string): ModelPricing | null {
   const barra = id.indexOf("/");
@@ -250,6 +268,11 @@ export function getPricing(provider: string, model: string): ModelPricing {
 
   // Grátis de verdade que o fetch confirmou: custo zero, seja qual for o nome.
   if (gratisConhecidos.get(provider)?.has(normalizado(model))) {
+    return { inputPerMillion: 0, outputPerMillion: 0, tier: "free", asOf: "2026-10" };
+  }
+
+  // Gemini num projeto sem cobrança: o modelo com plano grátis não custa nada.
+  if (provider === "gemini" && geminiSemCobranca && geminiTemTierGratis(lower)) {
     return { inputPerMillion: 0, outputPerMillion: 0, tier: "free", asOf: "2026-10" };
   }
 

@@ -28,6 +28,8 @@ export const PT_PLUGIN: Record<string, string> = {
     "O limite de gasto de hoje foi atingido: {spent} de {limit}. Os modelos pagos param até a meia-noite; os grátis e os locais continuam funcionando.",
   "Today's {limit} spending limit is reached ({spent}). Turn on “Stop paid models at the limit” in settings to pause them.":
     "O limite de gasto de hoje foi atingido: {spent} de {limit}. Ligue “Parar os modelos pagos no limite” nas configurações pra pausá-los.",
+  "If your Gemini key's project has no billing, turn on “My Gemini key is on the free tier” in Settings › Providers › Gemini.":
+    "Se o projeto da sua chave do Gemini não tem faturamento, ligue “Minha chave do Gemini está no plano grátis” em Settings › Providers › Gemini.",
   "Today's {limit} spending limit is reached ({spent} spent), so paid models are paused until midnight. Free and local models still work, or raise the limit in Settings › Chat › Daily spending.":
     "O limite de gasto de hoje foi atingido ({spent} de {limit}), então os modelos pagos estão pausados até a meia-noite. Os grátis e os locais continuam funcionando — ou aumente o limite em Configurações › Chat › Gasto diário.",
   // Painel, settings e a pasta oculta
