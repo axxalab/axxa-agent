@@ -19,6 +19,7 @@
 import {
   ProviderError,
   type Provider,
+  type ProviderMessage,
   type ProviderToolDefinition,
 } from "../providers/base";
 import {
@@ -369,6 +370,30 @@ export function encolherResultados(history: { role: string; content: string }[])
     encolhidos++;
   }
   return encolhidos;
+}
+
+/**
+ * O Ollama não avisa quando o pedido passa da janela: corta o começo em
+ * silêncio — as instruções e as ferramentas. Sem erro, a recuperação do
+ * motor nunca roda. Então, numa rodada do agente que já trouxe resultados de
+ * ferramenta, a janela é conferida antes de cada passo (o mesmo limiar do
+ * começo do turno) e os resultados antigos encolhem. Devolve quantos encolheu.
+ */
+export function conferirJanelaDoOllama(p: {
+  providerId: string;
+  model: string;
+  history: ProviderMessage[];
+  tools?: ProviderToolDefinition[];
+  /** O teto de resposta do nível (a reserva conta até 8k, como no num_ctx). */
+  resposta: number;
+  janela: number;
+  /** Onde a rodada começa no histórico: antes disso é a conversa. */
+  inicioDaRodada: number;
+}): number {
+  if (p.providerId !== "ollama" || p.history.length <= p.inicioDaRodada || p.janela <= 0) return 0;
+  const pedido = tokensDoPedido({ model: p.model, messages: p.history, tools: p.tools });
+  if (pedido + Math.min(p.resposta, 8192) <= p.janela * LIMIAR) return 0;
+  return encolherResultados(p.history);
 }
 
 // ── no turno ─────────────────────────────────────────────────────────────

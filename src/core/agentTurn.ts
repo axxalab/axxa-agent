@@ -46,6 +46,7 @@ import {
   caberNaJanela,
   ehEstouro,
   encolherResultados,
+  conferirJanelaDoOllama,
   janelaDoModelo,
   tetoDaResposta,
   type ResultadoDaJanela,
@@ -282,6 +283,16 @@ export async function runAgentTurn(
       let ultimoUso: UsoDoPedido | null = null;
       const donoDoPedido =
         useChatStore.getState().turnChatId ?? useChatStore.getState().currentChatId;
+      // Ollama: a janela conferida a cada passo (ver conferirJanelaDoOllama).
+      conferirJanelaDoOllama({
+        providerId: activeProviderId,
+        model: activeModel,
+        history,
+        tools,
+        resposta: maxTokensDoNivel,
+        janela,
+        inicioDaRodada: tamanhoDaConversa,
+      });
       // A resposta cabe junto com o pedido, que cresce a cada passo — e o
       // teto vale depois do piso dos modelos que pensam.
       const tetoDaJanela = tetoDaResposta(
