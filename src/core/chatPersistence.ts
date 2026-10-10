@@ -35,7 +35,14 @@ export interface ChatMessageStored {
   /** Mensagem do usuário: o resumo do que veio antes dela (o modelo recebe o
    *  resumo no lugar das mensagens anteriores). */
   resumo?: string;
+  /** As chaves da linha de meta que ESTA versão não conhece, como vieram
+   *  ("chave=valor"). Voltam iguais ao gravar: o que uma versão mais nova pôs
+   *  ali não some quando esta salva a conversa. */
+  metaDesconhecida?: string[];
 }
+
+/** As chaves da linha de meta que esta versão lê (o resto volta como veio). */
+const CHAVES_DA_META = new Set(["ts", "reaction", "err", "ctx", "sum"]);
 
 /** Uma linha que é EXATAMENTE um cabeçalho de seção do arquivo. Dentro de uma
  *  mensagem ela vai escapada (\## You), senão ao reabrir partia a mensagem. */
@@ -237,11 +244,14 @@ function renderBody(chat: ChatData): string {
       if (m.reaction) meta.push(`reaction=${m.reaction}`);
       if (m.isError) meta.push("err=1");
       // O contexto da mensagem (vault + notas), em base64: invisível no
-      // preview, imune a "## You" lá dentro, e a versão antiga do plugin
-      // esconde a linha inteira (ignora chave que não conhece).
+      // preview e imune a "## You" lá dentro. A 0.9.23 e as anteriores
+      // escondem a linha, mas ignoram a chave que não conhecem — e, ao gravar
+      // a conversa de novo, ela SOME do arquivo (desta versão em diante, chave
+      // desconhecida volta como veio: metaDesconhecida).
       if (m.contexto) meta.push(`ctx=${b64encode(m.contexto)}`);
       // O resumo do que veio antes — mesmo jeito do contexto.
       if (m.resumo) meta.push(`sum=${b64encode(m.resumo)}`);
+      if (m.metaDesconhecida) meta.push(...m.metaDesconhecida);
       const metaLine = meta.length > 0 ? `<!-- axxa: ${meta.join(" ")} -->\n` : "";
       // Ações do agent — base64 num comentário (precisão pro replay; invisível
       // no preview). O resumo legível vai no frontmatter tools_used.
@@ -263,6 +273,7 @@ function parseMessageMeta(content: string): {
   erro?: boolean;
   contexto?: string;
   resumo?: string;
+  metaDesconhecida?: string[];
 } {
   const match = content.match(/^\s*<!--\s*axxa:\s*([^>]+?)\s*-->\s*\n?/);
   if (!match) return { cleanContent: content };
@@ -273,6 +284,7 @@ function parseMessageMeta(content: string): {
   let erro: boolean | undefined;
   let contexto: string | undefined;
   let resumo: string | undefined;
+  const desconhecida: string[] = [];
   for (const part of meta.split(/\s+/)) {
     const corte = part.indexOf("=");
     const k = corte < 0 ? part : part.slice(0, corte);
@@ -293,9 +305,20 @@ function parseMessageMeta(content: string): {
       } catch {
         /* base64 estragado: sem resumo, o modelo recebe a conversa inteira */
       }
+    } else if (part && !CHAVES_DA_META.has(k)) {
+      // De uma versão mais nova: guarda pra gravar de volta igual.
+      desconhecida.push(part);
     }
   }
-  return { cleanContent, timestamp, reaction, erro, contexto, resumo };
+  return {
+    cleanContent,
+    timestamp,
+    reaction,
+    erro,
+    contexto,
+    resumo,
+    ...(desconhecida.length > 0 ? { metaDesconhecida: desconhecida } : {}),
+  };
 }
 
 // Exportadas pra teste de round-trip (integridade de dados). v0.1.149
@@ -432,7 +455,7 @@ function parseBody(body: string): ChatMessageStored[] {
       next ? next.headingStart : body.length
     );
     // Extrai metadata (timestamp + reaction) da linha HTML comment
-    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta, resumo } = parseMessageMeta(
+    const { cleanContent, timestamp, reaction, erro, contexto: ctxDaMeta, resumo, metaDesconhecida } = parseMessageMeta(
       rawContent.trim()
     );
     // Extrai as ações do agent (comentário base64) e tira do conteúdo visível.
@@ -452,6 +475,7 @@ function parseBody(body: string): ChatMessageStored[] {
       ...(contexto && cur.type === "user" ? { contexto } : {}),
       ...(resumo && cur.type === "user" ? { resumo } : {}),
       ...(erro && cur.type === "ai-response" ? { isError: true } : {}),
+      ...(metaDesconhecida ? { metaDesconhecida } : {}),
     });
   }
   return messages;

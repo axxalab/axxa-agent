@@ -24,6 +24,9 @@ interface BaseMessage {
   id: string;
   type: MessageType;
   timestamp: number;
+  /** Do arquivo: as chaves da linha de meta que esta versão não conhece —
+   *  gravadas de volta iguais (ver chatPersistence). */
+  metaDesconhecida?: string[];
 }
 
 export interface UserMessage extends BaseMessage {

@@ -87,6 +87,7 @@ export function mensagensParaGravar(msgs: readonly ChatMessage[]): ChatMessageSt
         timestamp: m.timestamp,
         ...(m.contexto ? { contexto: m.contexto } : {}),
         ...(m.resumo ? { resumo: m.resumo } : {}),
+        ...(m.metaDesconhecida ? { metaDesconhecida: m.metaDesconhecida } : {}),
       });
     } else if (m.type === "ai-response") {
       const passos = m.agentSteps && m.agentSteps.length > 0 ? m.agentSteps : undefined;
@@ -98,6 +99,7 @@ export function mensagensParaGravar(msgs: readonly ChatMessage[]): ChatMessageSt
         ...(m.isError ? { isError: true } : {}),
         ...(m.reaction ? { reaction: m.reaction } : {}),
         ...(passos ? { agentSteps: passos } : {}),
+        ...(m.metaDesconhecida ? { metaDesconhecida: m.metaDesconhecida } : {}),
       });
     }
   }
@@ -590,8 +592,9 @@ export class ChatSession {
     if (!run) return;
     this.skipNextSave = true;
     st.setAttachments([]);
-    st.setMessages(run.messages);
+    // O id ANTES das mensagens: ver load.
     st.setCurrentChatId(run.chatId);
+    st.setMessages(run.messages);
     st.setCurrentChatTitle(run.title);
     st.lockSession(run.provider, run.model, run.mode);
     st.resetUsage();
@@ -695,6 +698,7 @@ export class ChatSession {
         ...(m.type === "user" && m.contexto ? { contexto: m.contexto } : {}),
         ...(m.type === "user" && m.resumo ? { resumo: m.resumo } : {}),
         ...(m.type === "ai-response" && m.isError ? { isError: true } : {}),
+        ...(m.metaDesconhecida ? { metaDesconhecida: m.metaDesconhecida } : {}),
       }));
 
       const st = useChatStore.getState();
@@ -702,8 +706,12 @@ export class ChatSession {
       this.skipNextSave = true;
       this.pendingProjectId = null;
       st.setAttachments([]);
-      st.setMessages(restored);
+      // O id ANTES das mensagens: vindo da tela inicial (sem conversa), o
+      // setMessages chamava o auto-save sem id — ele saía antes de gastar o
+      // "pula a próxima" acima, e quem era pulada era a 1ª mudança de verdade
+      // (um like ou uma mensagem apagada logo depois de abrir não gravava).
       st.setCurrentChatId(chat.id);
+      st.setMessages(restored);
       st.setCurrentChatTitle(chat.title);
       st.lockSession(chat.provider, chat.model, chat.mode);
       st.resetUsage();
