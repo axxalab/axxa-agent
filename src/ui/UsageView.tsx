@@ -364,19 +364,27 @@ export function UsageView({
             />
           </div>
           {/* O cache de prompt trabalhando: quanto do que foi mandado saiu
-              pelo preço de cache, e quanto isso poupou. Só aparece com cache. */}
-          {agg.total.tokensCached > 0 && agg.total.tokensIn > 0 && (
-            <p className="axxa-usage-cache">
-              <Icon name="zap" size={12} />
+              pelo preço de cache, e quanto isso poupou — ou, quando gravar no
+              cache custou mais do que ele devolveu (respostas depois de o
+              cache expirar), quanto custou a mais. Esconder o prejuízo fazia a
+              linha parecer sempre boa notícia. */}
+          {agg.total.tokensIn > 0 && (agg.total.tokensCached > 0 || agg.total.economia <= -0.01) && (
+            <p className={"axxa-usage-cache" + (agg.total.economia <= -0.01 ? " is-mais-caro" : "")}>
+              <Icon name={agg.total.economia <= -0.01 ? "alert-triangle" : "zap"} size={12} />
               <span>
                 {agg.total.economia >= 0.01
                   ? tr("{pct}% of what you sent came from the cache — saved {usd}", {
                       pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
                       usd: formatUsdRounded(agg.total.economia),
                     })
-                  : tr("{pct}% of what you sent came from the cache", {
-                      pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
-                    })}
+                  : agg.total.economia <= -0.01
+                    ? tr("{pct}% of what you sent came from the cache, but writing to it cost {usd} more than it saved", {
+                        pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
+                        usd: formatUsdRounded(-agg.total.economia),
+                      })
+                    : tr("{pct}% of what you sent came from the cache", {
+                        pct: Math.round((agg.total.tokensCached / agg.total.tokensIn) * 100),
+                      })}
               </span>
             </p>
           )}

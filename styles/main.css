@@ -1417,6 +1417,11 @@ body.theme-dark {
   --icon-size: 12px;
 }
 
+/* Quando o cache custou mais do que poupou: a cor de aviso do tema. */
+.axxa-root .axxa-usage-cache.is-mais-caro {
+  color: var(--text-warning);
+}
+
 .axxa-root .axxa-mod-unit {
   min-width: 0;
   overflow: hidden;

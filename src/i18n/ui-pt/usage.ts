@@ -55,6 +55,8 @@ export const PT_USAGE: Record<string, string> = {
   "{pct}% of what you sent came from the cache — saved {usd}":
     "{pct}% do que você mandou saiu do cache — economizou {usd}",
   "{pct}% of what you sent came from the cache": "{pct}% do que você mandou saiu do cache",
+  "{pct}% of what you sent came from the cache, but writing to it cost {usd} more than it saved":
+    "{pct}% do que você mandou saiu do cache, mas gravar nele custou {usd} a mais do que ele poupou",
   "avg": "média",
   // O gráfico no tempo, e o vazio dele.
   "Tokens over time": "Tokens ao longo do tempo",
