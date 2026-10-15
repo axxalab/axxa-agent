@@ -14,7 +14,7 @@ export const HOT_DATA: [string, number][] = [
   ["gemini-(3|2\\.5-(pro|flash))", 0.9],
   ["qwen", 0.85],
   ["(^|/)o[34](\\b|-)", 0.8],
-  ["gemma", 0.76],
+  ["gemma", 0.75],
   ["claude-haiku", 0.72],
   ["(llama|meta-)", 0.69],
   ["deepseek", 0.69],
